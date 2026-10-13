@@ -1,62 +1,137 @@
-name: Build & test
+name: Build & Push Docker Image
 
 on:
-  pull_request:
+  push:
     branches: [dev, main]
+    tags: ['v*']
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository }}
 
 jobs:
-  build:
+  # Alpha image — pushed on dev merge
+  alpha:
     runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/dev'
+    permissions:
+      packages: write
+
     steps:
       - uses: actions/checkout@v4
 
-      - uses: actions/setup-node@v4
+      - uses: docker/setup-qemu-action@v3
+
+      - uses: docker/setup-buildx-action@v3
+
+      - uses: docker/login-action@v3
         with:
-          node-version: 22
-          cache: npm
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
 
-      - run: npm ci
+      - uses: docker/metadata-action@v5
+        id: meta
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          tags: |
+            type=raw,value=alpha
+            type=sha
 
-      - name: Build
-        run: npm run build
+      - uses: docker/build-push-action@v5
+        with:
+          context: .
+          platforms: linux/arm64
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
 
-      - name: Test
-        run: npm test
-
-  # main only takes dev from this repo. The test lives in the `if`, not in
-  # `run:`, so the branch name never reaches a shell. Skipped (passing) on
-  # PRs into dev.
-  only-dev-to-main:
-    if: github.base_ref == 'main' && (github.head_ref != 'dev' || github.event.pull_request.head.repo.full_name != github.repository)
+  # Prod image — pushed on main merge, tagged with the next version
+  prod:
     runs-on: ubuntu-latest
-    steps:
-      - name: Refuse
-        run: |
-          echo "::error::PRs into main must come from dev"
-          exit 1
+    if: github.ref == 'refs/heads/main'
+    permissions:
+      contents: write
+      packages: write
 
-  # Every release is deliberate: a PR into main must raise package.json past
-  # the latest v* tag, and the test suite then requires its CHANGELOG.md
-  # section. Skipped (passing) on PRs into dev.
-  version-bumped:
-    if: github.base_ref == 'main'
-    runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
         with:
-          fetch-depth: 0  # the tags
+          token: ${{ secrets.GITHUB_TOKEN }}
+          fetch-depth: 0  # tags are the version source
 
-      - name: Version is past the latest tag
+      - uses: docker/setup-qemu-action@v3
+
+      - uses: docker/setup-buildx-action@v3
+
+      - uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      # The version comes from git tags, not from a commit on main: the
+      # branch ruleset only accepts changes through a pull request, so a
+      # bump commit pushed from here would be rejected. Next version is the
+      # latest v* tag plus one patch, unless package.json was raised past it
+      # by hand (a minor or major release), in which case that is used as-is.
+      - name: Next version
+        id: bump
         run: |
-          VERSION=$(node -p "require('./package.json').version")
+          CURRENT=$(node -p 'require("./package.json").version')
           LATEST=$(git tag -l 'v[0-9]*.[0-9]*.[0-9]*' | sed 's/^v//' | sort -V | tail -n 1)
           if [ -z "$LATEST" ]; then
-            echo "No release tag yet; $VERSION passes."
-            exit 0
+            NEW_VERSION="$CURRENT"
+          elif [ "$CURRENT" != "$LATEST" ] && [ "$(printf '%s\n%s\n' "$CURRENT" "$LATEST" | sort -V | tail -n 1)" = "$CURRENT" ]; then
+            NEW_VERSION="$CURRENT"
+          else
+            IFS='.' read -r MAJOR MINOR PATCH <<< "$LATEST"
+            NEW_VERSION="$MAJOR.$MINOR.$((PATCH + 1))"
           fi
-          HIGHEST=$(printf '%s\n%s\n' "$VERSION" "$LATEST" | sort -V | tail -n 1)
-          if [ "$VERSION" = "$LATEST" ] || [ "$HIGHEST" != "$VERSION" ]; then
-            echo "::error::package.json is $VERSION, latest release is v$LATEST. Raise the version in package.json and add its CHANGELOG.md section"
-            exit 1
+          # Baked into the image only; not committed.
+          node -e "const p=require('./package.json'); p.version='$NEW_VERSION'; require('fs').writeFileSync('package.json', JSON.stringify(p, null, 2) + '\n')"
+          echo "version=$NEW_VERSION" >> "$GITHUB_OUTPUT"
+
+      - uses: docker/metadata-action@v5
+        id: meta
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          tags: |
+            type=raw,value=latest
+            type=raw,value=stable
+            type=raw,value=${{ steps.bump.outputs.version }}
+            type=sha
+
+      - uses: docker/build-push-action@v5
+        with:
+          context: .
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Tag release
+        run: |
+          git tag "v${{ steps.bump.outputs.version }}"
+          git push origin "v${{ steps.bump.outputs.version }}"
+
+      # A GitHub Release for the tag, so Holm's update check (and anyone
+      # watching the repo) sees it. The notes are that version's section of
+      # CHANGELOG.md; an automatic patch bump has none, so it gets one line.
+      - name: GitHub release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          V: ${{ steps.bump.outputs.version }}
+        run: |
+          awk -v v="$V" '
+            /^## / { if (on) exit; h = $0; sub(/^## v?/, "", h); split(h, a, /[ \t]/); on = (a[1] == v); next }
+            on
+          ' CHANGELOG.md > notes.md
+          if ! grep -q '[^[:space:]]' notes.md; then
+            echo "Maintenance build of Holm $V from ${GITHUB_SHA::7}. Notable changes are in CHANGELOG.md." > notes.md
           fi
-          echo "$VERSION is past v$LATEST."
+          gh release create "v$V" --title "Holm $V" --notes-file notes.md --verify-tag
