@@ -105,6 +105,7 @@ jobs:
             type=sha
 
       - uses: docker/build-push-action@v5
+        id: build
         with:
           context: .
           platforms: linux/amd64,linux/arm64
@@ -122,10 +123,13 @@ jobs:
       # A GitHub Release for the tag, so Holm's update check (and anyone
       # watching the repo) sees it. The notes are that version's section of
       # CHANGELOG.md; an automatic patch bump has none, so it gets one line.
+      # Under them goes the image this run pushed, by tag and by digest.
       - name: GitHub release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           V: ${{ steps.bump.outputs.version }}
+          IMG: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          DIGEST: ${{ steps.build.outputs.digest }}
         run: |
           awk -v v="$V" '
             /^## / { if (on) exit; h = $0; sub(/^## v?/, "", h); split(h, a, /[ \t]/); on = (a[1] == v); next }
@@ -134,4 +138,16 @@ jobs:
           if ! grep -q '[^[:space:]]' notes.md; then
             echo "Maintenance build of Holm $V from ${GITHUB_SHA::7}. Notable changes are in CHANGELOG.md." > notes.md
           fi
+          # Lowercased, as metadata-action pushed it.
+          IMG=${IMG,,}
+          cat >> notes.md <<EOF
+
+          ### Docker image
+
+          \`\`\`
+          docker pull $IMG:$V
+          \`\`\`
+
+          Pinned: \`$IMG@$DIGEST\` (linux/amd64, linux/arm64)
+          EOF
           gh release create "v$V" --title "Holm $V" --notes-file notes.md --verify-tag
