@@ -157,8 +157,8 @@ search:
 
 # ── Integrations ────────────────────────────────────────────
 # Pluggable third-party app adapters. Shipped adapters: Immich, Paperless,
-# Nextcloud, Planka, Karakeep, Jellyfin, Plex, Navidrome, Audiobookshelf,
-# Mealie, Seerr. Add more in
+# Nextcloud, Planka, Karakeep, Linkwarden, Jellyfin, Plex, Navidrome,
+# Audiobookshelf, Mealie, Seerr, Miniflux, Komga, Kavita. Add more in
 # src/lib/server/integrations/.
 #
 # Each key must match both the adapter's `id` AND an app `id` in the apps
@@ -228,6 +228,15 @@ integrations:
     surfaces:
       search: true
       widgets: false
+  # No di: icon exists for Linkwarden; give an app with id: linkwarden
+  # icon: "https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons/png/linkwarden.png"
+  linkwarden:
+    enabled: true
+    name: "Linkwarden"
+    default_url: "https://linkwarden.example.com"
+    surfaces:
+      search: true
+      widgets: false
   jellyfin:
     enabled: true
     name: "Jellyfin"
@@ -267,6 +276,34 @@ integrations:
     enabled: true
     name: "Requests"
     default_url: "https://seerr.example.com"  # Needed: users connect automatically through Jellyfin or Plex, at this URL
+    surfaces:
+      search: true
+      widgets: false
+  caldav:
+    enabled: true
+    name: "Calendar"
+    # default_url: "https://cloud.example.com/remote.php/dav"  # Optional: pins every user to one CalDAV server
+    surfaces:
+      search: true
+      widgets: true                           # Reminders: users can turn on event reminders on the page
+  miniflux:
+    enabled: true
+    name: "News"
+    default_url: "https://miniflux.example.com"
+    surfaces:
+      search: true
+      widgets: false
+  komga:
+    enabled: true
+    name: "Comics"
+    default_url: "https://komga.example.com"
+    surfaces:
+      search: true
+      widgets: false
+  kavita:
+    enabled: true
+    name: "Manga"
+    default_url: "https://kavita.example.com"
     surfaces:
       search: true
       widgets: false
@@ -346,6 +383,20 @@ privacy:
         - "View, export, or delete your data anytime"
         - "Contact the server operator for questions"
 
+# ── What's new ──────────────────────────────────────────────
+# After an update, each user gets a "What's new" dialog once, with the notes
+# from CHANGELOG.md for every release since they last closed it. A new user
+# doesn't get it. The version is shown in Configure either way.
+changelog:
+  enabled: true                # false turns the dialog off for everyone
+
 # ── Tips ────────────────────────────────────────────────────
 # First-week tips are switched off in this release; a tips: block is accepted
 # and ignored.
+
+# ── Embedding ───────────────────────────────────────────────
+# Pages allowed to show Holm in an iframe, e.g. a dashboard. Unset, framing is
+# blocked. Origins only (scheme, host, optional port); see docs/configuration.md.
+# security:
+#   frame_ancestors:
+#     - "https://dash.example.com"

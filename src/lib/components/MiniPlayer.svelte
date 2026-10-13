@@ -1,5 +1,8 @@
 <script>
+	import { onMount } from 'svelte';
+	import { get } from 'svelte/store';
 	import { nowPlaying } from '$lib/stores/player.js';
+	import { integrations as integrationsStore } from '$lib/stores/integrations.js';
 
 	// Corner player for a song picked in search. Deliberately small: play or
 	// pause, stop, mute, and how far along it is. No seeking and no queue.
@@ -16,13 +19,62 @@
 	const total = $derived(track?.duration || (Number.isFinite(length) ? length : 0));
 	const progress = $derived(total ? Math.min(current / total, 1) : 0);
 
+	// A reload brings the song back where it was, paused: browsers don't let
+	// a page start sound on its own before it's been clicked. Kept per tab.
+	const SAVED_KEY = 'holm_player';
+	let resumeAt = null;
+
+	function save() {
+		if (!track || failed || !audio) return;
+		try { sessionStorage.setItem(SAVED_KEY, JSON.stringify({ track, at: audio.currentTime || 0 })); } catch { /* private mode */ }
+	}
+
+	function forget() {
+		try { sessionStorage.removeItem(SAVED_KEY); } catch { /* private mode */ }
+	}
+
+	// Only while that integration's Player switch is still on.
+	async function restore() {
+		let saved;
+		try { saved = JSON.parse(sessionStorage.getItem(SAVED_KEY) || 'null'); } catch { return; }
+		const id = /^\/api\/integrations\/([^/]+)\//.exec(saved?.track?.stream || '')?.[1];
+		if (!id) return forget();
+		await integrationsStore.load();
+		const it = get(integrationsStore).integrations.find((x) => x.id === id);
+		const on = it?.userState?.connected && it.userState.surfaces?.widgets === true && (it.availableSurfaces || []).includes('widgets');
+		if (!on) return forget();
+		if (get(nowPlaying)) return;
+		resumeAt = Number(saved.at) || 0;
+		nowPlaying.set(saved.track);
+	}
+
+	onMount(() => {
+		restore();
+		const onHide = () => { if (document.visibilityState === 'hidden') save(); };
+		window.addEventListener('pagehide', save);
+		document.addEventListener('visibilitychange', onHide);
+		return () => {
+			window.removeEventListener('pagehide', save);
+			document.removeEventListener('visibilitychange', onHide);
+		};
+	});
+
 	// A new track (a fresh object each pick, even the same song) starts over.
 	$effect(() => {
 		if (!audio || !track) return;
 		failed = false;
 		current = 0;
 		audio.src = track.stream;
-		audio.play().catch(() => {});
+		if (resumeAt == null) {
+			audio.play().catch(() => {});
+			return;
+		}
+		// Restored: load just enough to show the time and seek, then wait.
+		const at = resumeAt;
+		resumeAt = null;
+		current = at;
+		audio.preload = 'metadata';
+		audio.addEventListener('loadedmetadata', () => { audio.currentTime = at; }, { once: true });
 	});
 
 	function toggle() {
@@ -35,6 +87,7 @@
 		audio?.pause();
 		audio?.removeAttribute('src');
 		audio?.load();
+		forget();
 		nowPlaying.set(null);
 	}
 
@@ -52,7 +105,7 @@
 	bind:currentTime={current}
 	bind:duration={length}
 	onended={stop}
-	onerror={() => { if (track) failed = true; }}
+	onerror={() => { if (track) { failed = true; forget(); } }}
 	preload="none"
 ></audio>
 
@@ -95,12 +148,9 @@
 {/if}
 
 <style>
+	/* Placed by CornerStack. */
 	.mini-player {
-		position: fixed;
-		z-index: 55;
-		right: 16px;
-		bottom: calc(env(safe-area-inset-bottom, 0px) + 16px);
-		width: min(340px, calc(100vw - 24px));
+		position: relative;
 		display: flex;
 		align-items: center;
 		gap: 12px;
@@ -108,10 +158,6 @@
 		border-radius: 16px;
 		overflow: hidden;
 		box-shadow: 0 12px 32px -8px rgba(0, 0, 0, 0.45);
-	}
-	/* Phones: the search is docked at the bottom, so sit just above it. */
-	@media (max-width: 767px) {
-		.mini-player { right: 12px; bottom: calc(env(safe-area-inset-bottom, 0px) + 12px + 50px + 10px); }
 	}
 	.mini-player-art {
 		position: relative;

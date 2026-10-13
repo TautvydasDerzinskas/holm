@@ -1,5 +1,5 @@
 <script>
-	import { onMount, getContext, untrack } from 'svelte';
+	import { onMount, getContext, untrack, tick } from 'svelte';
 	import { prefersReducedMotion } from 'svelte/motion';
 	import { integrations as integrationsStore } from '$lib/stores/integrations.js';
 	import { nowPlaying } from '$lib/stores/player.js';
@@ -12,6 +12,7 @@
 	import { arrangeProviderSections } from '$lib/launcher/sections.js';
 	import { cycleHints } from '$lib/launcher/typedHints.js';
 	import { recordOpen, frecencyScores } from '$lib/launcher/frecency.js';
+	import { instantAnswer } from '$lib/launcher/instant.js';
 
 	const siteConfig = getContext('config');
 	const searchConfig = siteConfig?.search || { enabled: true, url: 'https://www.google.com/search', param: 'q' };
@@ -25,9 +26,21 @@
 	let resultsMaxHeight = $state(420);
 	// On desktop the open palette slides up toward the top of the viewport,
 	// Spotlight-style, so short screens (a 14" laptop) give the results most
-	// of the height instead of the strip under a mid-page bar. Phones keep
-	// the bottom dock. `lift` is the px the bar is raised by.
+	// of the height instead of the strip under a mid-page bar. On phones it
+	// pins to the top, just under the status bar, above the keyboard.
+	// `lift` is the px the bar is raised by.
 	let lift = $state(0);
+	// env(safe-area-inset-top) in px: the status bar in an installed app.
+	// Measured on mount and on resize (which covers rotation), not per scroll.
+	let safeTop = 0;
+	function safeAreaTop() {
+		const probe = document.createElement('div');
+		probe.style.cssText = 'position:absolute;visibility:hidden;padding-top:env(safe-area-inset-top, 0px)';
+		document.body.appendChild(probe);
+		const px = parseFloat(getComputedStyle(probe).paddingTop) || 0;
+		probe.remove();
+		return px;
+	}
 	function recomputeResultsMaxHeight() {
 		if (!containerEl || typeof window === 'undefined') return;
 		const rect = containerEl.getBoundingClientRect();
@@ -36,11 +49,15 @@
 		const shift = new DOMMatrixReadOnly(getComputedStyle(containerEl).transform).m42;
 		const restTop = rect.top - shift;
 		const restBottom = rect.bottom - shift;
+		// The visible part of the page: iOS covers it with the keyboard
+		// without resizing it, and may scroll it underneath.
+		const vv = window.visualViewport;
 		const desktop = window.matchMedia('(min-width: 768px)').matches;
-		const targetTop = Math.max(48, window.innerHeight * 0.1);
-		lift = desktop && inlineOpen ? Math.max(0, Math.round(restTop - targetTop)) : 0;
+		const targetTop = desktop ? Math.max(48, window.innerHeight * 0.1) : (vv?.offsetTop ?? 0) + safeTop + 12;
+		lift = inlineOpen ? Math.max(0, Math.round(restTop - targetTop)) : 0;
 		const gap = 24;
-		const available = window.innerHeight - (restBottom - lift) - gap;
+		const visibleBottom = vv ? vv.offsetTop + vv.height : window.innerHeight;
+		const available = visibleBottom - (restBottom - lift) - gap;
 		resultsMaxHeight = Math.max(220, available);
 	}
 
@@ -74,7 +91,8 @@
 					shelf: prov.shelf,
 					// Navidrome's player widget: songs play in Holm instead of opening.
 					player: it.userState?.surfaces?.widgets === true && (it.availableSurfaces || []).includes('widgets'),
-					searchUrl: it.operatorDefaults?.url || it.userState?.config?.url || null
+					// The Calendar's CalDAV URL is no page to browse; its web address is.
+					searchUrl: it.userState?.config?.webUrl || it.operatorDefaults?.url || it.userState?.config?.url || null
 				});
 			}
 		}
@@ -189,6 +207,7 @@
 		FIRST_HINT,
 		...(scopeHint ? [scopeHint] : []),
 		'Type a command, like “dark” or “wallpaper”',
+		'Do quick maths, like “12 * 7” or “5 km in mi”',
 		`Press / or ${isMac ? '⌘K' : 'Ctrl K'} anywhere to search`
 	]);
 	let placeholderText = $state(FIRST_HINT);
@@ -208,7 +227,7 @@
 			const res = await fetch('/api/search', {
 				method: 'POST',
 				headers: { 'content-type': 'application/json' },
-				body: JSON.stringify({ provider: provider.providerId, query: q, limit: 24 }),
+				body: JSON.stringify({ provider: provider.providerId, query: q, limit: 24, timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone }),
 				signal
 			});
 			if (!res.ok) {
@@ -304,6 +323,18 @@
 
 	async function copyText(text) {
 		try { await navigator.clipboard.writeText(text); } catch {}
+	}
+
+	// Which value of the answer card was just copied, for its "Copied" label.
+	// Tied to the query, so typing on clears it.
+	let answerCopied = $state(null);
+	let answerCopiedTimer;
+	function copyAnswer(value, index) {
+		copyText(value.copy);
+		answerCopied = { index, query };
+		clearTimeout(answerCopiedTimer);
+		answerCopiedTimer = setTimeout(() => (answerCopied = null), 1500);
+		inputEl?.focus();
 	}
 
 	function finish() {
@@ -407,6 +438,11 @@
 		request: resultAction(detailView.key, detailView.p, detailView.r),
 		open: detailView.r.href
 			? { label: openOn(detailView.p, detailView.r), run: () => { openUrl(detailView.r.href, true); finish(); } }
+			: null,
+		// A link the details bring (an event's video call). The label names
+		// the host, since anyone who sends an invite picks the link.
+		link: detailView.data?.link?.href && /^https:\/\//.test(detailView.data.link.href)
+			? { label: `${detailView.data.link.label || 'Open'} · ${new URL(detailView.data.link.href).host}`, run: () => { openUrl(detailView.data.link.href, true); finish(); } }
 			: null
 	});
 
@@ -495,6 +531,31 @@
 		}
 
 		if (!activeScope) {
+			// Maths, conversions and times answer in place, above everything,
+			// so Enter copies the answer.
+			const answer = instantAnswer(q);
+			if (answer) {
+				// A bare "2ft" answers in more than one unit: Enter copies the
+				// first, the actions panel offers each. Copying keeps the search
+				// open, so it works as a calculator.
+				const values = [{ ...answer.to, copy: answer.copy }, ...(answer.also || [])];
+				out.push({
+					id: 'answer',
+					label: { math: 'Calculator', unit: 'Conversion', time: 'Time' }[answer.kind],
+					layout: 'answer',
+					items: [{
+						key: 'answer',
+						title: answer.to.value,
+						subtitle: answer.from.value,
+						answer,
+						actions: values.map((v, i) => ({
+							label: values.length > 1 ? `Copy ${v.value}` : 'Copy answer',
+							run: () => copyAnswer(v, i)
+						}))
+					}]
+				});
+			}
+
 			const scoredApps = apps
 				.map((a) => ({
 					a,
@@ -575,6 +636,7 @@
 						subtitle: r.subtitle,
 						thumbnail: r.thumbnail,
 						kind: r.meta?.kind,
+						color: r.meta?.color,
 						// A failed action reports here; success shows on the chip. The
 						// play mark already says "Available", so that badge is dropped.
 						badge: (actionState[key]?.ok === false && actionState[key].message)
@@ -692,8 +754,12 @@
 
 	onMount(() => {
 		ensureIntegrationsLoaded();
+		safeTop = safeAreaTop();
 		recomputeResultsMaxHeight();
-		const onResize = () => recomputeResultsMaxHeight();
+		const onResize = () => {
+			safeTop = safeAreaTop();
+			recomputeResultsMaxHeight();
+		};
 		window.addEventListener('resize', onResize);
 
 		// ?q= deep link (browser search engine / OpenSearch): open the
@@ -739,20 +805,32 @@
 		document.addEventListener('keydown', onKeydown);
 		document.addEventListener('mousedown', onClickOutside);
 
-		// iOS has no interactive-widget support yet: lift the bottom-docked
-		// search above the on-screen keyboard by the part of the layout
-		// viewport the keyboard covers.
+		// From a widget (the Calendar's upcoming events): search for the item
+		// and open its details, as if it had been picked from the results.
+		async function onShowDetails(e) {
+			const { integrationId, title, href, detail: params, color } = e.detail || {};
+			const p = inlineProviders.find((x) => x.integrationId === integrationId);
+			if (!p || !params) return;
+			query = title || '';
+			activeScope = null;
+			inlineOpen = true;
+			inputEl?.focus();
+			await tick();
+			openDetail(`widget:${integrationId}:${title}`, p, { title, href: href || undefined, detail: params, meta: { kind: 'event', color } });
+		}
+		window.addEventListener('holm:show-details', onShowDetails);
+
+		// The keyboard opening or closing changes how much room the results
+		// have below the bar.
 		const vv = window.visualViewport;
-		const onViewport = () => {
-			const covered = Math.max(0, window.innerHeight - vv.height - vv.offsetTop);
-			document.documentElement.style.setProperty('--kb-inset', `${covered}px`);
-		};
+		const onViewport = () => recomputeResultsMaxHeight();
 		vv?.addEventListener('resize', onViewport);
 		vv?.addEventListener('scroll', onViewport);
 
 		return () => {
 			document.removeEventListener('keydown', onKeydown);
 			document.removeEventListener('mousedown', onClickOutside);
+			window.removeEventListener('holm:show-details', onShowDetails);
 			window.removeEventListener('resize', onResize);
 			vv?.removeEventListener('resize', onViewport);
 			vv?.removeEventListener('scroll', onViewport);
@@ -970,6 +1048,8 @@
 			onselect={(k) => { selectedKey = k; userMoved = true; }}
 			onrun={runItem}
 			onaction={(item, action) => { panelOpen = false; action.run(); }}
+			answerCopied={answerCopied?.query === query ? answerCopied.index : -1}
+			oncopyanswer={(item, i) => item.actions[i]?.run()}
 			onpanel={() => { panelOpen = !panelOpen; inputEl?.focus(); }}
 		/>
 	{/if}

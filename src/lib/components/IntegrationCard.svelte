@@ -2,6 +2,7 @@
 	import { onDestroy } from 'svelte';
 	import { marked } from 'marked';
 	import AppIcon from './AppIcon.svelte';
+	import IntegrationAccounts from './IntegrationAccounts.svelte';
 	import { integrations as integrationsStore } from '$lib/stores/integrations.js';
 	import { resolveIcon } from '$lib/apps.js';
 
@@ -23,7 +24,7 @@
 		for (const f of integration.configSchema) {
 			const known = integration.userState?.config?.[f.key];
 			const opDefault = integration.operatorDefaults?.[f.key];
-			out[f.key] = known ?? opDefault ?? '';
+			out[f.key] = known ?? opDefault ?? f.default ?? '';
 		}
 		return out;
 	}
@@ -40,6 +41,8 @@
 	let formSurfaces = $state(seedSurfaces());
 	let contextOpen = $state(false);
 	let menuEl = $state(null);
+	// Opens upward when the list it scrolls in has no room below it.
+	let menuUp = $state(false);
 	let testStatus = $state(null);
 	let testing = $state(false);
 	let saving = $state(false);
@@ -50,6 +53,9 @@
 	const hasSearch = $derived((integration.availableSurfaces || []).includes('search'));
 	const hasWidgets = $derived((integration.availableSurfaces || []).includes('widgets') && integration.widgets?.length > 0);
 	const visibleFields = $derived(integration.configSchema.filter((f) => !f.hidden));
+	// Advanced starts open when one of its fields already has a value, and
+	// isn't closed again while it's being edited.
+	const openIf = (node, open) => { node.open = !!open; };
 	const signedInAs = $derived(integration.signIn && connected ? integration.userState?.config?.userName : '');
 	// Seerr can sign in through Jellyfin or Plex: config.via names the app,
 	// or the integration itself for a direct sign-in.
@@ -176,6 +182,10 @@
 				surfacesToSave.search = true;
 				formSurfaces = surfacesToSave;
 			}
+			if (willConnectFresh && hasWidgets && integration.widgetsOnConnect) {
+				surfacesToSave.widgets = true;
+				formSurfaces = surfacesToSave;
+			}
 			await integrationsStore.save(integration.id, { config: formConfig, surfaces: surfacesToSave });
 			dirty = false;
 			onCollapseRequest();
@@ -243,7 +253,19 @@
 
 	function openContext(e) {
 		e.stopPropagation();
+		if (!contextOpen && menuEl) menuUp = roomBelow(menuEl) < 96;
 		contextOpen = !contextOpen;
+	}
+
+	function roomBelow(el) {
+		let bottom = window.innerHeight;
+		for (let p = el.parentElement; p; p = p.parentElement) {
+			if (/(auto|scroll|hidden)/.test(getComputedStyle(p).overflowY)) {
+				bottom = Math.min(bottom, p.getBoundingClientRect().bottom);
+				break;
+			}
+		}
+		return bottom - el.getBoundingClientRect().bottom;
 	}
 
 	function editConnection() {
@@ -330,7 +352,7 @@
 						</svg>
 					</button>
 					{#if contextOpen}
-						<div class="absolute right-0 top-full mt-1 bg-surface-modal border border-border-card rounded-lg shadow-theme z-50 min-w-[140px] py-1">
+						<div class="absolute right-0 {menuUp ? 'bottom-full mb-1' : 'top-full mt-1'} bg-surface-modal border border-border-card rounded-lg shadow-theme z-50 min-w-[140px] py-1">
 							<button
 								class="w-full px-3 py-1.5 text-left text-[0.75rem] text-content-muted bg-transparent border-none cursor-pointer hover:bg-surface-card-hover transition-colors"
 								onclick={editConnection}
@@ -359,111 +381,148 @@
 					{integration.tip}
 				</div>
 			{/if}
-			<div class="space-y-2">
-				{#each visibleFields as field}
-					{@const lockedByOperator = field.fromOperatorDefault && integration.operatorDefaults?.[field.key]}
-					<label class="block">
-						<span class="block text-[0.7rem] text-content-dim mb-1">{field.label}{#if field.required}<span class="text-[var(--accent,#f5b942)]" aria-hidden="true"> *</span>{/if}</span>
-						<input
-							type={field.type === 'secret' ? 'password' : field.type === 'url' ? 'url' : 'text'}
-							bind:value={formConfig[field.key]}
-							placeholder={field.placeholder}
-							oninput={markDirty}
-							readonly={!!lockedByOperator}
-							class="w-full bg-surface-input border border-border-input rounded-lg px-3 py-2 text-[0.8rem] text-content font-mono placeholder:text-content-dim outline-none focus:border-border-pill {lockedByOperator ? 'opacity-60 cursor-not-allowed' : ''}"
-							autocomplete={field.type === 'secret' ? 'new-password' : 'off'}
-							spellcheck="false"
-							data-1p-ignore="true"
-							data-lpignore="true"
-							data-bwignore="true"
-						/>
-						{#if lockedByOperator}
-							<span class="block text-[0.7rem] text-content-dim mt-1">Set by your administrator</span>
-						{:else}
-							{#if field.help}
-								<div class="field-help text-[0.7rem] text-content-dim mt-1.5 leading-relaxed">
-									{@html marked.parse(field.help)}
+			{#snippet mainForm()}
+				<div class="space-y-2">
+					{#snippet fieldRow(field)}
+						{#if field.type === 'color'}
+							<div class="block">
+								<span class="block text-[0.7rem] text-content-dim mb-1">{field.label}</span>
+								<div class="swatches" role="radiogroup" aria-label={field.label}>
+									{#each field.options as option}
+										<button
+											type="button"
+											role="radio"
+											class="swatch"
+											style="--swatch: {option.hex}"
+											aria-checked={(formConfig[field.key] || field.default) === option.value}
+											aria-label={option.label}
+											title={option.label}
+											onclick={() => { formConfig[field.key] = option.value; markDirty(); }}
+										></button>
+									{/each}
 								</div>
-							{/if}
-							{#if field.helpUrl && formConfig[field.helpUrl.baseKey]}
-								<a
-									href="{formConfig[field.helpUrl.baseKey]}{field.helpUrl.path}"
-									target="_blank"
-									rel="noopener noreferrer"
-									class="inline-block text-[0.7rem] text-blue-400 hover:text-blue-300 mt-1 no-underline hover:underline"
-								>{field.helpUrl.label} ↗</a>
-							{/if}
-						{/if}
-					</label>
-				{/each}
-
-				{#if integration.signIn}
-					{#if signFlow}
-						<div class="rounded-lg border border-border-card bg-surface-card/40 px-3 py-3 text-center" role="status" aria-live="polite">
-							<div class="text-[0.7rem] text-content-dim mb-1.5">Your code</div>
-							<div class="signin-digits font-mono text-content" aria-label="Code {signFlow.code.split('').join(' ')}">{signFlow.code}</div>
-							{#if signFlow.help || integration.signIn.help}
-								<div class="field-help text-[0.7rem] text-content-dim mt-2 leading-relaxed">{@html marked.parse(signFlow.help || integration.signIn.help)}</div>
-							{/if}
-							{#if signFlow.link}
-								<a
-									href={signFlow.link}
-									target="_blank"
-									rel="noopener noreferrer"
-									class="inline-block text-[0.7rem] text-blue-400 hover:text-blue-300 mt-1 no-underline hover:underline"
-								>Open {integration.name} ↗</a>
-							{/if}
-							<div class="flex items-center justify-center gap-2 text-[0.7rem] text-content-dim mt-2.5">
-								<span class="signin-spinner" aria-hidden="true"></span>
-								Waiting for approval…
+								{#if field.help}<div class="field-help text-[0.7rem] text-content-dim mt-1.5 leading-relaxed">{field.help}</div>{/if}
 							</div>
-						</div>
-					{/if}
-					{#if signError}
-						<div class="text-[0.7rem] font-mono px-2 py-1.5 rounded bg-red-500/10 text-red-300 border border-red-500/30">
-							{signError}
-						</div>
-					{/if}
-					<div class="flex gap-2 pt-1 justify-end">
-						{#if signFlow}
-							<button
-								class="py-1.5 px-3 rounded-lg text-[0.75rem] font-mono bg-transparent text-content-dim border border-border-card cursor-pointer hover:text-content transition-colors"
-								onclick={startSignIn}
-							>New code</button>
 						{:else}
+							{@const lockedByOperator = field.fromOperatorDefault && integration.operatorDefaults?.[field.key]}
+							<label class="block">
+								<span class="block text-[0.7rem] text-content-dim mb-1">{field.label}{#if field.required}<span class="text-[var(--accent,#f5b942)]" aria-hidden="true"> *</span>{/if}</span>
+								<input
+									type={field.type === 'secret' ? 'password' : field.type === 'url' ? 'url' : 'text'}
+									bind:value={formConfig[field.key]}
+									placeholder={field.placeholder}
+									oninput={markDirty}
+									readonly={!!lockedByOperator}
+									class="w-full bg-surface-input border border-border-input rounded-lg px-3 py-2 text-[0.8rem] text-content font-mono placeholder:text-content-dim outline-none focus:border-border-pill {lockedByOperator ? 'opacity-60 cursor-not-allowed' : ''}"
+									autocomplete={field.type === 'secret' ? 'new-password' : 'off'}
+									spellcheck="false"
+									data-1p-ignore="true"
+									data-lpignore="true"
+									data-bwignore="true"
+								/>
+								{#if lockedByOperator}
+									<span class="block text-[0.7rem] text-content-dim mt-1">Set by your administrator</span>
+								{:else}
+									{#if field.help}
+										<div class="field-help text-[0.7rem] text-content-dim mt-1.5 leading-relaxed">
+											{@html marked.parse(field.help)}
+										</div>
+									{/if}
+									{#if field.helpUrl && formConfig[field.helpUrl.baseKey]}
+										<a
+											href="{formConfig[field.helpUrl.baseKey]}{field.helpUrl.path}"
+											target="_blank"
+											rel="noopener noreferrer"
+											class="inline-block text-[0.7rem] text-blue-400 hover:text-blue-300 mt-1 no-underline hover:underline"
+										>{field.helpUrl.label} ↗</a>
+									{/if}
+								{/if}
+							</label>
+						{/if}
+					{/snippet}
+					{#each visibleFields.filter((f) => !f.advanced) as field}{@render fieldRow(field)}{/each}
+					{#if visibleFields.some((f) => f.advanced)}
+						<details class="advanced" use:openIf={visibleFields.some((f) => f.advanced && formConfig[f.key])}>
+							<summary class="text-[0.7rem] text-content-dim">Advanced</summary>
+							<div class="space-y-2 pt-2">
+								{#each visibleFields.filter((f) => f.advanced) as field}{@render fieldRow(field)}{/each}
+							</div>
+						</details>
+					{/if}
+
+					{#if integration.signIn}
+						{#if signFlow}
+							<div class="rounded-lg border border-border-card bg-surface-card/40 px-3 py-3 text-center" role="status" aria-live="polite">
+								<div class="text-[0.7rem] text-content-dim mb-1.5">Your code</div>
+								<div class="signin-digits font-mono text-content" aria-label="Code {signFlow.code.split('').join(' ')}">{signFlow.code}</div>
+								{#if signFlow.help || integration.signIn.help}
+									<div class="field-help text-[0.7rem] text-content-dim mt-2 leading-relaxed">{@html marked.parse(signFlow.help || integration.signIn.help)}</div>
+								{/if}
+								{#if signFlow.link}
+									<a
+										href={signFlow.link}
+										target="_blank"
+										rel="noopener noreferrer"
+										class="inline-block text-[0.7rem] text-blue-400 hover:text-blue-300 mt-1 no-underline hover:underline"
+									>Open {integration.name} ↗</a>
+								{/if}
+								<div class="flex items-center justify-center gap-2 text-[0.7rem] text-content-dim mt-2.5">
+									<span class="signin-spinner" aria-hidden="true"></span>
+									Waiting for approval…
+								</div>
+							</div>
+						{/if}
+						{#if signError}
+							<div class="text-[0.7rem] font-mono px-2 py-1.5 rounded bg-red-500/10 text-red-300 border border-red-500/30">
+								{signError}
+							</div>
+						{/if}
+						<div class="flex gap-2 pt-1 justify-end">
+							{#if signFlow}
+								<button
+									class="py-1.5 px-3 rounded-lg text-[0.75rem] font-mono bg-transparent text-content-dim border border-border-card cursor-pointer hover:text-content transition-colors"
+									onclick={startSignIn}
+								>New code</button>
+							{:else}
+								<button
+									class="py-1.5 px-3 rounded-lg text-[0.75rem] font-mono bg-surface-card-strong text-content border border-border-card cursor-pointer hover:bg-surface-card-strong transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
+									disabled={signStarting || !formConfig.url}
+									onclick={startSignIn}
+								>{signStarting ? 'Getting a code…' : connected ? 'Sign in again' : signLabel}</button>
+							{/if}
+						</div>
+					{:else}
+						{#if testStatus}
+							<div class="text-[0.7rem] font-mono px-2 py-1.5 rounded {testStatus.ok ? 'bg-emerald-500/10 text-emerald-300 border border-emerald-500/30' : 'bg-red-500/10 text-red-300 border border-red-500/30'}">
+								{testStatus.ok ? '✓' : '✗'} {testStatus.message}
+							</div>
+						{/if}
+						{#if saveError}
+							<div class="text-[0.7rem] font-mono px-2 py-1.5 rounded bg-red-500/10 text-red-300 border border-red-500/30">
+								{saveError}
+							</div>
+						{/if}
+
+						<div class="flex gap-2 pt-1 justify-end">
+							<button
+								class="py-1.5 px-3 rounded-lg text-[0.75rem] font-mono bg-transparent text-content-dim border border-border-card cursor-pointer hover:text-content transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
+								disabled={testing}
+								onclick={runTest}
+							>{testing ? 'Testing…' : 'Test'}</button>
 							<button
 								class="py-1.5 px-3 rounded-lg text-[0.75rem] font-mono bg-surface-card-strong text-content border border-border-card cursor-pointer hover:bg-surface-card-strong transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
-								disabled={signStarting || !formConfig.url}
-								onclick={startSignIn}
-							>{signStarting ? 'Getting a code…' : connected ? 'Sign in again' : signLabel}</button>
-						{/if}
-					</div>
-				{:else}
-					{#if testStatus}
-						<div class="text-[0.7rem] font-mono px-2 py-1.5 rounded {testStatus.ok ? 'bg-emerald-500/10 text-emerald-300 border border-emerald-500/30' : 'bg-red-500/10 text-red-300 border border-red-500/30'}">
-							{testStatus.ok ? '✓' : '✗'} {testStatus.message}
+								disabled={saving || (!dirty && connected)}
+								onclick={runSave}
+							>{saving ? 'Saving…' : connected ? 'Save' : 'Connect'}</button>
 						</div>
 					{/if}
-					{#if saveError}
-						<div class="text-[0.7rem] font-mono px-2 py-1.5 rounded bg-red-500/10 text-red-300 border border-red-500/30">
-							{saveError}
-						</div>
-					{/if}
-
-					<div class="flex gap-2 pt-1 justify-end">
-						<button
-							class="py-1.5 px-3 rounded-lg text-[0.75rem] font-mono bg-transparent text-content-dim border border-border-card cursor-pointer hover:text-content transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
-							disabled={testing}
-							onclick={runTest}
-						>{testing ? 'Testing…' : 'Test'}</button>
-						<button
-							class="py-1.5 px-3 rounded-lg text-[0.75rem] font-mono bg-surface-card-strong text-content border border-border-card cursor-pointer hover:bg-surface-card-strong transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
-							disabled={saving || (!dirty && connected)}
-							onclick={runSave}
-						>{saving ? 'Saving…' : connected ? 'Save' : 'Connect'}</button>
-					</div>
-				{/if}
-			</div>
+				</div>
+			{/snippet}
+			{#if connected && integration.multiAccount}
+				<IntegrationAccounts {integration} main={mainForm} />
+			{:else}
+				{@render mainForm()}
+			{/if}
 
 			<!-- Surface toggles -->
 			{#if connected}
@@ -510,6 +569,24 @@
 </div>
 
 <style>
+	/* Fields most people never need, folded away under Advanced. */
+	.advanced > summary { cursor: pointer; width: fit-content; transition: color 0.15s ease; }
+	.advanced > summary:hover { color: var(--color-content); }
+	/* A color field's swatches, the Mac's way: a ring marks the one picked. */
+	.swatches { display: flex; flex-wrap: wrap; gap: 0.5rem; padding: 0.15rem 0; }
+	.swatch {
+		width: 1.25rem;
+		height: 1.25rem;
+		border-radius: 999px;
+		border: none;
+		padding: 0;
+		cursor: pointer;
+		background: var(--swatch);
+		transition: transform 0.15s ease;
+	}
+	.swatch:hover { transform: scale(1.1); }
+	.swatch[aria-checked='true'] { outline: 2px solid var(--swatch); outline-offset: 2px; }
+	.swatch:focus-visible { outline: 2px solid var(--color-content-muted); outline-offset: 2px; }
 	.signin-digits {
 		font-size: 1.75rem;
 		font-weight: 600;

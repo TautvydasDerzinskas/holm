@@ -717,12 +717,8 @@ body.search-active .dashboard-wallpaper {
 	filter: blur(8px);
 }
 
-/* Dashboard header. On desktop it sits in normal flow at the top of the
-   page; on mobile it's pinned via position:fixed so the time/date/
-   weather row stays glued to the viewport top regardless of scroll
-   position (no sticky-containing-block gymnastics). The page wrapper
-   reserves space for the fixed header via its top padding so the first
-   tile row doesn't slide under it. */
+/* Dashboard header: in normal flow at the top of the page, under the
+   status bar on phones (the page's top padding clears the safe area). */
 .dashboard-header {
 	min-height: 36px;
 }
@@ -732,39 +728,7 @@ body.search-active .dashboard-wallpaper {
 	z-index: 30;
 }
 @media (max-width: 767px) {
-	.dashboard-header-wrap {
-		position: fixed;
-		top: 0;
-		left: 0;
-		right: 0;
-		z-index: 30;
-		padding: env(safe-area-inset-top, 0px) 1.25rem 0.5rem;
-		background: linear-gradient(
-			to bottom,
-			rgba(15, 15, 17, 0.7) 0%,
-			rgba(15, 15, 17, 0.45) 70%,
-			transparent 100%
-		);
-		backdrop-filter: blur(10px);
-		-webkit-backdrop-filter: blur(10px);
-	}
-	.dashboard-header {
-		padding-right: 0;
-		margin-bottom: 0;
-	}
-}
-@media (max-width: 767px) {
-	.theme-light .dashboard-header-wrap {
-		background: linear-gradient(
-			to bottom,
-			rgba(255, 255, 255, 0.8) 0%,
-			rgba(255, 255, 255, 0.55) 70%,
-			transparent 100%
-		);
-	}
-	/* fade-in-up's filled end state is an identity transform, which would
-	   make this wrapper the containing block for the fixed search dock. */
-	.launcher-host { animation-name: fade-in; }
+	.dashboard-header { padding-right: 0; }
 }
 .dashboard-header::before {
 	content: '';
@@ -791,12 +755,10 @@ body.search-active .hero-area {
 	position: relative;
 	z-index: 2;
 }
-/* The open palette lifts over the header on desktop; the header sits
-   above the search bar for its weather menu, so swap them while the
-   palette is open (the header is dimmed and inert then anyway). */
-@media (min-width: 768px) {
-	body.search-active .launcher-host { z-index: 40; }
-}
+/* The open palette lifts over the header; the header sits above the
+   search bar for its weather menu, so swap them while the palette is open
+   (the header is dimmed and inert then anyway). */
+body.search-active .launcher-host { z-index: 40; }
 /* Focus state on .hero-search-form (defined above) handles the open-palette
    lift; keeping a separate body.search-active shadow would compete with it. */
 
@@ -1743,6 +1705,76 @@ body.search-active .hero-area {
 }
 @media (prefers-reduced-motion: reduce) { .launcher-item.is-skeleton .launcher-track-art { animation: none; } }
 
+/* Instant answers (maths, conversions, times): question → answer */
+.launcher-answers { padding: 4px 4px 6px; }
+.launcher-item.is-answer {
+	display: grid;
+	grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+	align-items: center;
+	gap: 12px;
+	padding: 16px 14px;
+	border-radius: 12px;
+	background: var(--hero-search-chip-bg);
+	box-shadow: inset 0 0 0 1px var(--hero-search-chip-border);
+}
+.launcher-item.is-answer.is-selected { box-shadow: inset 0 0 0 1px var(--launcher-sel-ring); }
+.launcher-item.is-answer { cursor: pointer; transition: background-color 120ms ease; }
+.launcher-item.is-answer:hover { background: color-mix(in srgb, var(--hero-search-text) 6%, var(--hero-search-chip-bg)); }
+/* Each result value is its own copy target. */
+.launcher-answer-copy {
+	padding: 6px 22px;
+	border: none;
+	border-radius: 10px;
+	background: transparent;
+	font: inherit;
+	cursor: pointer;
+	transition: background-color 120ms ease;
+}
+.launcher-answer-copy:hover { background: color-mix(in srgb, var(--hero-search-text) 9%, transparent); }
+.launcher-answer-copy.is-copied .launcher-answer-label { color: var(--hero-search-text-strong); }
+.launcher-answer-side {
+	display: flex;
+	flex-direction: column;
+	align-items: center;
+	gap: 6px;
+	min-width: 0;
+	text-align: center;
+}
+.launcher-answer-value {
+	max-width: 100%;
+	/* One line height for both sides, so the labels underneath line up. */
+	line-height: 2rem;
+	font-size: 1.05rem;
+	color: var(--hero-search-text);
+	overflow-wrap: anywhere;
+	font-variant-numeric: tabular-nums;
+}
+.launcher-answer-value.is-result {
+	font-size: 1.4rem;
+	font-weight: 600;
+	color: var(--hero-search-text-strong);
+}
+.launcher-answer-label {
+	font-size: 0.62rem;
+	letter-spacing: 0.08em;
+	text-transform: uppercase;
+	color: var(--hero-search-text-dim);
+}
+.launcher-answer-arrow { width: 18px; height: 18px; color: var(--hero-search-text-dim); }
+/* A bare "2ft": its conversions side by side, sharing the right half. */
+.launcher-answer-results {
+	display: flex;
+	flex-wrap: wrap;
+	justify-content: space-evenly;
+	gap: 8px 6px;
+	min-width: 0;
+}
+@media (max-width: 767px) {
+	.launcher-item.is-answer { padding: 12px 10px; gap: 8px; }
+	.launcher-answer-value { font-size: 0.9rem; }
+	.launcher-answer-value.is-result { font-size: 1.15rem; }
+}
+
 /* Photo grid and poster rows */
 .launcher-grid, .launcher-posters {
 	display: flex;
@@ -1989,6 +2021,8 @@ body.search-active .hero-area {
 	aspect-ratio: 2 / 3;
 	box-shadow: 0 6px 20px rgba(0, 0, 0, 0.35);
 }
+/* An event has no poster, only its icon. */
+.launcher-detail-poster.is-icon { width: 72px; aspect-ratio: 1; align-self: flex-start; }
 .launcher-detail-info {
 	min-width: 0;
 	display: flex;
@@ -2012,11 +2046,32 @@ body.search-active .hero-area {
 	font-size: 0.72rem;
 	color: var(--hero-search-text-dim);
 }
+/* A fact stays whole; one wider than the panel (a long address) ends in an ellipsis. */
+.launcher-detail-facts > span { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .launcher-detail-facts > span + span::before { content: '·'; margin-right: 6px; }
 .launcher-detail-rating { display: inline-flex; align-items: center; gap: 3px; color: var(--hero-search-text-strong); }
 .launcher-detail-rating svg { width: 11px; height: 11px; color: var(--accent, #f5b942); }
 .launcher-detail-info .launcher-tags { flex-wrap: wrap; }
 .launcher-detail-buttons { display: flex; gap: 8px; margin-top: 6px; }
+.launcher-detail-head { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
+/* Compact (an event): buttons to the right of the title and facts. */
+.launcher-detail-body.is-compact { align-items: center; }
+.launcher-detail-body.is-compact .launcher-detail-info { flex: 1; flex-direction: row; align-items: center; justify-content: space-between; gap: 16px; }
+.launcher-detail-body.is-compact .launcher-detail-buttons { margin-top: 0; flex-shrink: 0; }
+.launcher-detail-body.is-compact .launcher-detail-buttons:empty { display: none; }
+@media (max-width: 640px) {
+	.launcher-detail-body.is-compact .launcher-detail-info { flex-direction: column; align-items: flex-start; gap: 8px; }
+	/* An event on a phone: a small icon beside the title, then the date, time
+	   and place across the full width, so they keep to one line. */
+	.launcher-detail-body.is-compact { display: grid; grid-template-columns: 40px minmax(0, 1fr); gap: 12px; align-items: center; }
+	.launcher-detail-body.is-compact .launcher-detail-info,
+	.launcher-detail-body.is-compact .launcher-detail-head { display: contents; }
+	.launcher-detail-poster.is-icon { width: 40px; }
+	.launcher-detail-body.is-compact .launcher-detail-title { font-size: 1.05rem; }
+	.launcher-detail-body.is-compact .launcher-detail-facts,
+	.launcher-detail-body.is-compact .launcher-detail-head > :not(.launcher-detail-title),
+	.launcher-detail-body.is-compact .launcher-detail-buttons { grid-column: 1 / -1; }
+}
 .launcher-detail-btn {
 	display: inline-flex;
 	align-items: center;
@@ -2054,7 +2109,12 @@ body.search-active .hero-area {
 	line-height: 1.7;
 	color: var(--hero-search-text-strong);
 }
-.launcher-detail-text p { margin: 0 0 10px; }
+.launcher-detail-text p { margin: 0 0 10px; white-space: pre-line; }
+.launcher-detail-text p a { color: inherit; text-decoration: underline; text-underline-offset: 2px; overflow-wrap: anywhere; }
+/* Lines standing in for the description while the details load. */
+.launcher-detail-placeholder { max-width: 56ch; }
+.launcher-detail-placeholder .launcher-skeleton-line { display: block; width: 100%; margin: 0 0 12px; }
+.launcher-detail-placeholder .launcher-skeleton-line.is-short { width: 55%; }
 .launcher-detail-tagline { font-style: italic; color: var(--hero-search-text-dim); }
 .launcher-detail-cast { color: var(--hero-search-text-dim); }
 .launcher-detail-cast span { color: var(--hero-search-text-strong); font-weight: 600; margin-right: 4px; }
@@ -2154,33 +2214,24 @@ body.search-active .hero-area {
 @media (min-width: 768px) {
 	.hero-search-input { font-size: 0.95rem; }
 }
-/* Desktop: the open palette rises toward the top of the viewport
-   (SearchBar sets --search-lift) so results get the screen height. */
-@media (min-width: 768px) {
-	.hero-search {
-		transform: translateY(calc(-1 * var(--search-lift, 0px)));
-		transition: transform 220ms var(--ease-standard);
-	}
+/* The open palette rises toward the top of the viewport (SearchBar sets
+   --search-lift) so results get the screen height: on phones, right up
+   under the status bar. */
+.hero-search {
+	transform: translateY(calc(-1 * var(--search-lift, 0px)));
+	transition: transform 220ms var(--ease-standard);
 }
-@media (min-width: 768px) and (prefers-reduced-motion: reduce) {
+@media (prefers-reduced-motion: reduce) {
 	.hero-search,
 	.hero-search.is-open { transition: none; }
 }
 
-/* ── Phones: search docked at the bottom, in thumb reach ───────
-   The bar sits above the home indicator (and above the keyboard: Android
-   resizes the viewport via interactive-widget, iOS gets --kb-inset from
-   SearchBar). Results open upward as a separate card. The account button
-   sits at the right end of the same dock. */
+/* ── Phones: search above the apps ─────────────────────────────
+   The bar sits in the page under the clock and weather, and its results
+   open downward as a separate card, clear of the on-screen keyboard. The
+   account button floats in the bottom-right corner. */
 @media (max-width: 767px) {
-	.hero-area { margin-top: 0; margin-bottom: 0; }
-	.hero-slot {
-		position: fixed;
-		left: 12px;
-		right: 68px;
-		bottom: calc(env(safe-area-inset-bottom, 0px) + 12px + var(--kb-inset, 0px));
-		z-index: 40;
-	}
+	.hero-area { margin-top: 0; margin-bottom: 1.5rem; }
 	.hero-search-form {
 		border-radius: 16px;
 		box-shadow: 0 10px 30px -8px rgba(0, 0, 0, 0.55);
@@ -2191,26 +2242,17 @@ body.search-active .hero-area {
 	}
 	.hero-search .launcher-panel,
 	.hero-search.is-open .launcher-panel {
-		top: auto;
-		bottom: calc(100% + 8px);
-		right: -56px;
-		margin-top: 0 !important;
+		margin-top: 8px !important;
 		border-radius: 16px !important;
 		border-top: 1px solid var(--hero-search-border) !important;
-		max-height: calc(100dvh - var(--kb-inset, 0px) - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px) - 96px);
-		animation-name: launcher-up;
 	}
 	.launcher-footer-hint { display: none; }
 }
-@keyframes launcher-up {
-	from { opacity: 0; transform: translateY(6px); }
-	to { opacity: 1; transform: none; }
-}
 @keyframes launcher-spin { to { transform: rotate(360deg); } }
-/* Mobile account button: the right end of the bottom search dock. */
+/* Mobile account button: bottom-right, above the home indicator. */
 .dock-account {
 	right: 12px;
-	bottom: calc(env(safe-area-inset-bottom, 0px) + 12px + var(--kb-inset, 0px));
+	bottom: calc(env(safe-area-inset-bottom, 0px) + 12px);
 }
 
 /* SVG key glyphs (Keys.svelte) — sized to the kbd's text. */
@@ -2254,3 +2296,8 @@ body.search-active .hero-area {
 	fill: none; stroke: currentColor; stroke-width: 1.75; stroke-linecap: round; stroke-linejoin: round;
 }
 .tile-menu-sep { height: 1px; margin: 5px 0; background: var(--color-border-card, rgba(255, 255, 255, 0.08)); }
+
+/* Icons in the header's mono line: sized to the text and lifted onto its
+   cap height, since the uppercase line has no descenders. */
+.header-glyph { display: inline-flex; width: 1.05em; height: 1.05em; flex-shrink: 0; transform: translateY(-0.07em); }
+.header-glyph > svg { width: 100%; height: 100%; }

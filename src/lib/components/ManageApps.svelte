@@ -3,13 +3,20 @@
 	import { portal } from '$lib/actions/portal.js';
 	import { getContext } from 'svelte';
 	import { prefs } from '$lib/stores/prefs.js';
-	import { buildAppsFromConfig } from '$lib/apps.js';
+	import { buildAppsFromConfig, resolveIcon } from '$lib/apps.js';
 	import IntegrationsPanel from '$lib/components/IntegrationsPanel.svelte';
+	import AppIcon from '$lib/components/AppIcon.svelte';
+	import { integrations as integrationsStore } from '$lib/stores/integrations.js';
 	import { TOTAL_WALLPAPERS, getWallpaperThumbUrl } from '$lib/wallpaper.js';
 	import { browser } from '$app/environment';
 	import { confirmDiscardUnsaved } from '$lib/unsaved.js';
 
 	const siteConfig = getContext('config');
+	const version = siteConfig?.version || '';
+	// The version is Holm's whatever the branding says, and links to its repo.
+	// A newer release, when update_check found one and lets this user see it.
+	const update = siteConfig?.update || null;
+	const REPO_URL = 'https://github.com/man15h/holm';
 	// Off when database.enabled is false: credentials would have nowhere to live.
 	const integrationsEnabled = siteConfig?.integrations?.enabled !== false;
 	const { apps: catalogApps } = buildAppsFromConfig(siteConfig?.apps);
@@ -112,6 +119,42 @@
 		prefs.update(p => ({ ...p, enabledWidgets: [...next] }));
 	}
 
+	// Connected integrations that bring widgets (Calendar, Music) get a row
+	// here too, flipping the same switch as their card under Integrations.
+	const integrationWidgets = $derived(
+		integrationsEnabled
+			? $integrationsStore.integrations.filter(
+					(it) => it.userState?.connected && (it.availableSurfaces || []).includes('widgets') && it.widgets?.length > 0
+				)
+			: []
+	);
+	let widgetSaveError = $state('');
+	// Integration id → the value being saved: the row flips at once, like the
+	// card, and ignores clicks until the save lands.
+	let widgetPending = $state({});
+
+	$effect(() => {
+		if (open && activeTab === 'widgets' && integrationsEnabled) integrationsStore.load();
+	});
+
+	async function toggleIntegrationWidgets(it) {
+		if (it.id in widgetPending) return;
+		const widgets = it.userState.surfaces?.widgets !== true;
+		widgetPending = { ...widgetPending, [it.id]: widgets };
+		widgetSaveError = '';
+		try {
+			await integrationsStore.save(it.id, {
+				config: it.userState.config,
+				surfaces: { ...it.userState.surfaces, widgets }
+			});
+		} catch (err) {
+			widgetSaveError = err.message || 'Failed to update widgets';
+		} finally {
+			const { [it.id]: _, ...rest } = widgetPending;
+			widgetPending = rest;
+		}
+	}
+
 	function selectWallpaper(id) {
 		wallpaperId = id;
 		prefs.update(p => ({ ...p, wallpaperId: id }));
@@ -152,6 +195,13 @@
 		{ id: 'light', label: 'Light' }
 	];
 </script>
+
+{#snippet versionLinks()}
+	<a class="version-link" href={REPO_URL} target="_blank" rel="noopener noreferrer" title="Holm on GitHub">Holm v{version}</a>
+	{#if update}
+		<a class="version-link update" href={update.url} target="_blank" rel="noopener noreferrer" title="What's in Holm v{update.latest}">v{update.latest} available</a>
+	{/if}
+{/snippet}
 
 {#if open}
 	<div
@@ -216,6 +266,9 @@
 								class="text-[0.7rem] text-content-dim bg-transparent border-none cursor-pointer hover:text-content transition-colors font-mono px-3"
 								onclick={resetDefaults}
 							>Reset defaults</button>
+						{/if}
+						{#if version}
+							<div class="version-line mt-1.5">{@render versionLinks()}</div>
 						{/if}
 					</div>
 				</div>
@@ -358,12 +411,48 @@
 						</div>
 					</button>
 				{/each}
+				{#each integrationWidgets as it (it.id)}
+					{@const on = widgetPending[it.id] ?? it.userState.surfaces?.widgets === true}
+					<button
+						class="flex items-center gap-3 w-full px-2 py-3 bg-transparent border-none border-b border-border-card text-left font-mono cursor-pointer hover:bg-surface-card-hover"
+						role="switch"
+						aria-checked={on}
+						aria-busy={it.id in widgetPending}
+						onclick={() => toggleIntegrationWidgets(it)}
+					>
+						<span class="w-8 h-8 rounded-lg bg-surface-input border border-border-card flex items-center justify-center shrink-0">
+							<AppIcon icon={resolveIcon(it.icon)} name={it.name} size="w-4 h-4" iconStyle="white" />
+						</span>
+						<div class="flex-1 min-w-0">
+							<div class="text-[0.8rem] text-content font-medium">{it.name}</div>
+							<div class="text-[0.7rem] text-content-dim">{it.widgets.map((w) => w.label).join(', ')}</div>
+						</div>
+						<div class="w-9 h-5 rounded-full transition-colors duration-200 relative shrink-0 {on ? 'bg-surface-toggle-on' : 'bg-surface-toggle-off'}">
+							<div class="absolute top-0.5 w-4 h-4 rounded-full bg-surface-toggle-knob shadow transition-transform duration-200 {on ? 'translate-x-4' : 'translate-x-0.5'}"></div>
+						</div>
+					</button>
+				{/each}
+				{#if widgetSaveError}
+					<div class="px-2 pt-2 text-[0.7rem] text-red-400">{widgetSaveError}</div>
+				{/if}
 
 				{:else if activeTab === 'integrations'}
 				<!-- ═══ INTEGRATIONS TAB ═══ -->
 				<IntegrationsPanel {iconStyle} />
 
 				{/if}
+				<!-- On phones the sidebar is hidden: Reset defaults and the version sit
+				     under the tab, flush with its content. -->
+				<div class="hidden max-md:flex flex-col items-start gap-1.5 mt-6">
+					{#if resetUndo}
+						<button class="text-[0.7rem] text-content bg-transparent border-none cursor-pointer underline underline-offset-2 font-mono p-0" onclick={undoResetDefaults}>Undo reset</button>
+					{:else}
+						<button class="text-[0.7rem] text-content-dim bg-transparent border-none cursor-pointer hover:text-content transition-colors font-mono p-0" onclick={resetDefaults}>Reset defaults</button>
+					{/if}
+					{#if version}
+						<div class="version-line flush">{@render versionLinks()}</div>
+					{/if}
+				</div>
 				</div>
 			</div>
 
@@ -371,3 +460,27 @@
 	</div>
 {/if}
 
+<style>
+	.version-line {
+		display: flex;
+		flex-direction: column;
+		align-items: flex-start;
+		gap: 0.15rem;
+		padding: 0 0.75rem;
+	}
+	.version-line.flush { padding: 0; }
+	.version-link {
+		text-align: left;
+		text-decoration: none;
+		background: transparent;
+		border: none;
+		cursor: pointer;
+		font-family: var(--font-mono, ui-monospace, monospace);
+		font-size: 0.68rem;
+		color: var(--color-content-dim);
+		opacity: 0.7;
+		transition: opacity 0.15s ease;
+	}
+	.version-link:hover, .version-link:focus-visible { opacity: 1; color: var(--color-content); }
+	.version-link.update { color: var(--color-content); opacity: 0.9; }
+</style>

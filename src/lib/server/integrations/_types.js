@@ -9,15 +9,19 @@
 /**
  * @typedef {Object} ConfigField
  * @property {string} key                       Stable id (used as the form name and the stored config key)
- * @property {'url'|'text'|'secret'} type       Renders as <input type="...">; 'secret' redacts to bullets in API responses
+ * @property {'url'|'text'|'secret'|'color'} type  Renders as <input type="...">; 'secret' redacts to bullets in API responses; 'color' is a row of swatches from `options`
  * @property {string} label                     Human-readable label
  * @property {boolean} [required]               Defaults to false
  * @property {string} [placeholder]
  * @property {string} [help]                    Small helper text shown under the field
  * @property {{ baseKey: string, path: string, label: string }} [helpUrl]  Clickable link built from config[baseKey] + path
  * @property {string} [fromOperatorDefault]     If set, the form pre-fills from `integrations.<id>.<value>` in config.yml
+ * @property {{ value: string, label: string, hex: string }[]} [options]  The swatches of a 'color' field; the value stored is `value`
+ * @property {string} [default]                 Shown, and saved, when the field has no value yet
+ * @property {boolean} [advanced]               Shown folded away under Advanced on the form, for fields most users leave empty
  * @property {boolean} [hidden]                 Stored and redacted like any field, but never rendered — filled by `signIn`
  * @property {boolean} [trim]                   Defaults to true; set false where surrounding spaces matter (a password)
+ * @property {boolean} [link]                   A 'url' field the browser only opens (a web page) and Holm never sends credentials to, so changing its origin keeps the stored secrets
  */
 
 /**
@@ -39,6 +43,7 @@
  * @property {Object} [meta]
  * @property {string} [meta.kind]               'photo' triggers the photo-grid variant in SearchResults
  * @property {string} [meta.takenAt]
+ * @property {string} [meta.color]              A hex color the result's icon is tinted with (a calendar event's account)
  * @property {string} [meta.status]             Short badge, e.g. 'Available'
  * @property {string} [meta.tmdb]               '<movie|tv>:<tmdb id>' — identifies the title across providers
  * @property {{ title: string, artist?: string, duration?: number, stream: string, cover?: string }} [meta.track]  A song Holm can play itself: `stream` is a proxy URL for the audio, `duration` in seconds
@@ -61,6 +66,32 @@
  * @property {typeof fetch} fetch
  * @property {Record<string, object>} [linked]   Only for `linkedTo` adapters: the user's configs for those integrations, when connected
  * @property {(config: object) => Promise<void>} [saveConfig]  Only for `linkedTo` adapters: replaces the stored config (e.g. a renewed session)
+ * @property {string} [timeZone]                 Search only: the user's IANA time zone, from the browser (UTC when it sent none)
+ */
+
+/**
+ * @typedef {Object} Reminder
+ * @property {string} id                         Stable across polls: the page keeps each id up until it is dismissed
+ * @property {string} title
+ * @property {number} at                         When to show it, ms since the epoch
+ * @property {number} start                      When the event starts, ms
+ * @property {number|null} [end]
+ * @property {boolean} [allDay]
+ * @property {string} [location]
+ * @property {string} [href]                     Opened by the reminder's Open button
+ * @property {string|null} [call]               The event's video call link, for a Join button
+ */
+
+/**
+ * @typedef {Object} UpcomingEvent
+ * @property {string} id
+ * @property {string} title
+ * @property {number} start                      ms since the epoch
+ * @property {number|null} [end]
+ * @property {boolean} [allDay]
+ * @property {string} [location]
+ * @property {string|null} [href]                Where the event opens, if anywhere
+ * @property {object} [detail]                    Params for the integration's `details`, as on a search result
  */
 
 /**
@@ -115,11 +146,15 @@
  * @property {(ctx: { config: object, linked: Record<string, object>, fetch: typeof fetch }) => Promise<object|{ error: string }|null>} [connectFromLinked]  Connects the user without asking, from a linked connection; returns the config to save, null to fall back to `signIn`, or `{ error }` when a code would fail the same way
  * @property {(ctx: { config: object, fetch: typeof fetch }) => Promise<string[]>} [linkedVia]  Which of `linkedTo` can sign in at the operator's URL (Seerr: the server it runs on), for the cards' wording
  * @property {Record<string, Action>} [actions]             Writes triggered from search results
- * @property {(ctx: AdapterContext & { params: object }) => Promise<{ title: string, facts?: string[], rating?: number|null, genres?: string[], tagline?: string, overview?: string, cast?: string[], thumbnail?: string, backdrop?: string } | null>} [details]  Detail view for a result's `detail` params; null when they're invalid
+ * @property {(ctx: AdapterContext & { params: object }) => Promise<{ title: string, facts?: string[], rating?: number|null, genres?: string[], tagline?: string, overview?: string, cast?: string[], thumbnail?: string, backdrop?: string, link?: { label: string, href: string } | null } | null>} [details]  Detail view for a result's `detail` params; null when they're invalid
  * @property {(ctx: { config: object }) => object} [prepareConfig]  Rewrites the merged config just before it is saved, e.g. swapping a password for a derived token
  * @property {Record<string, SearchProvider>} [searchProviders]
  * @property {Record<string, ProxyHandler>} [proxy]            Optional proxy handlers keyed by name (e.g. 'thumbnail')
  * @property {Record<string, { label: string, description?: string }>} [widgets]  Widgets behind the `widgets` surface, e.g. Navidrome's player; the user's switch is `surfaces.widgets`
+ * @property {boolean} [multiAccount]  The user can add more accounts under the first (up to 5), stored as `config.accounts`: each a config of the same schema plus an `id`, checked and redacted like the first. The adapter reads them all (see accountsOf in caldav.js)
+ * @property {boolean} [widgetsOnConnect]  Turn the widgets switch on when the user first connects (where the operator allows widgets); otherwise it starts off
+ * @property {(ctx: { config: object, fetch: typeof fetch, timeZone: string }) => Promise<Reminder[]>} [reminders]  Reminders due in the next day, or already due for an event not yet over, for GET /api/reminders; asked only while the user's widgets switch is on
+ * @property {(ctx: { config: object, fetch: typeof fetch, timeZone: string }) => Promise<UpcomingEvent[]>} [upcoming]  The next events, still on now to a week ahead, for GET /api/upcoming; asked only while the user's widgets switch is on
  */
 
 export {};

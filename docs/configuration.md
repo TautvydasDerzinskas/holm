@@ -183,6 +183,8 @@ All list-based types (`privacy`, `security`, `list`) support: `icon`, `title`, `
 
 **Icons:** Use any [Lucide](https://lucide.dev/icons) icon by name (e.g., `shield-check`, `lock`, `info`). Direct URLs also work. Browse 1400+ icons at [lucide.dev/icons](https://lucide.dev/icons).
 
+Add `groups:` to show onboarding only to some users; see [Groups for onboarding, privacy and What's new](#groups-for-onboarding-privacy-and-whats-new).
+
 ## Optional Features
 
 ```yaml
@@ -219,9 +221,46 @@ privacy:
   enabled: true
   last_updated: "April 2026"
   file: "privacy.md"
+  groups: ["family"]           # optional: only these groups see it
 ```
 
 Set `default_url` for every integration you enable: it pins the server URL for every user. Without it, users can point the integration at any http(s) host Holm can reach, and Holm logs a warning at startup.
+
+### What's new
+
+After an update, each user gets a **What's new in vX.Y.Z** dialog the first time they open Holm, with that release's notes from `CHANGELOG.md` (bundled at build time; Holm never asks GitHub). Once closed, it stays closed until the next version. Someone who skipped versions sees every release since the one they last closed it on; a brand-new user doesn't get it at all. Signed-in users' last version is kept on the server, so it follows them across devices. With auth off, everyone is the shared guest, so each browser keeps its own in `localStorage` instead (and so does every user when the database is off).
+
+`changelog: { enabled: false }` turns the dialog off for everyone, and `changelog: { groups: ["admins"] }` shows it only to those groups. The version still shows at the bottom of Configure as "Holm vX.Y.Z", whatever `branding.name` is, and links to Holm on GitHub.
+
+### Groups for onboarding, privacy and What's new
+
+`onboarding`, `privacy` and `changelog` each take `groups:`, matched the same way as `groups:` on [apps](#apps):
+
+```yaml
+changelog:  { enabled: true, groups: ["admins"] }
+onboarding: { enabled: true, groups: ["family"], slides: [...] }
+privacy:    { enabled: true, groups: ["family"], file: "privacy.md" }
+```
+
+- `enabled: false` hides it from everyone.
+- `enabled` without `groups` shows it to everyone.
+- `enabled` with `groups` shows it only to users in at least one of them.
+
+The server decides. Someone outside the groups gets no slides, no privacy text and no release notes in the page or from `/api/changelog`. With auth off, everyone is a guest with no groups, so a section with `groups:` is hidden from everyone.
+
+The sign-in screen asks visitors to agree to the Privacy & Terms only when they can open the privacy notice. Nobody is signed in there yet, so with `groups:` on `privacy` (or `privacy` off) that box doesn't show. Members open the notice from the footer once signed in.
+
+### Update notice
+
+At most every 6 hours, Holm's server asks GitHub for Holm's latest release (`api.github.com/repos/…/holm/releases/latest`); visitors' browsers never do. When it's newer than the running version, Configure shows `v0.7.0 available` under the version, linking to that release's notes. If GitHub can't be reached or answers with an error, there's no notice, just one line in the log, and Holm asks again 6 hours later. A page load never waits for the check.
+
+```yaml
+update_check:
+  enabled: true                # default; false = never ask GitHub
+  groups: ["admins"]           # optional: only these groups see the notice
+```
+
+`groups` works as in [Groups for onboarding, privacy and What's new](#groups-for-onboarding-privacy-and-whats-new). GitHub is asked only once someone who can see the notice opens Holm, so with auth off and `groups` set it never is.
 
 `tips` is accepted but has no effect: the first-week tips are switched off in this release.
 
@@ -230,6 +269,20 @@ Set `default_url` for every integration you enable: it pins the server URL for e
 Users connect integrations with their own credentials, encrypted at rest with AES-256-GCM. Set `HOLM_SECRET_KEY` (32 bytes, hex or base64: `openssl rand -hex 32`) in production. Without it, Holm generates `.integrations-key` in the same directory as the database, so anyone with a copy of the data directory also has the key. The same key signs sessions, so changing it signs everyone out.
 
 For the list of supported apps, how users connect and how to add a new integration, see [integrations.md](integrations.md).
+
+## Embedding Holm in another page
+
+By default no other site can show Holm in a frame: every page answers `X-Frame-Options: DENY` and `frame-ancestors 'none'`. To embed it in a dashboard such as Dynacat or Homepage, list the pages' origins:
+
+```yaml
+security:
+  frame_ancestors:
+    - "https://dash.example.com"
+```
+
+Holm then answers `frame-ancestors 'self' https://dash.example.com` and drops `X-Frame-Options`. Each entry is a scheme and host with an optional port (`https://*.example.com` covers its subdomains). Anything else, such as a path or a bare `*`, is ignored with a warning at startup.
+
+Sign-in cookies are `SameSite=Lax`, so the browser only sends them into a frame whose parent page is on the same site. `dash.example.com` framing `home.example.com` works once you've signed in to Holm in a normal tab. Other sites, and a parent on a bare IP, get a signed-out page. Sign-in itself can't happen inside the frame, because identity providers refuse to be framed.
 
 ## Reference
 
@@ -260,5 +313,9 @@ Every key Holm reads. "Reload" means a save takes effect without a restart.
 | `wallpapers.enabled` | bool | `false` | yes | Wallpaper picker and daily rotation |
 | `weather.enabled` | bool | `false` | yes | Users set their own location |
 | `onboarding.enabled` / `welcome_text` / `services` / `slides` | | off | yes | See [Onboarding](#onboarding) |
+| `onboarding.groups` / `privacy.groups` / `changelog.groups` | list | everyone | yes | Only these OIDC groups see it. See [Groups](#groups-for-onboarding-privacy-and-whats-new) |
 | `privacy.enabled` / `last_updated` / `file` / `sections` | | off | yes | `file` is relative to `config.yml` |
+| `security.frame_ancestors` | list of origins | none | yes | Pages allowed to show Holm in a frame. See [Embedding](#embedding-holm-in-another-page) |
 | `tips.*` | | | | Accepted, no effect in this release |
+| `changelog.enabled` | bool | `true` | yes | The "What's new" dialog after an update |
+| `update_check.enabled` / `groups` | bool / list | `true` / everyone | yes | Asks GitHub every 6 hours for a newer release and shows it in Configure. See [Update notice](#update-notice) |

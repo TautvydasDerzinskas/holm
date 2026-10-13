@@ -9,6 +9,9 @@
 	import SettingsButton from '$lib/components/SettingsButton.svelte';
 	import InstallPrompt from '$lib/components/InstallPrompt.svelte';
 	import MiniPlayer from '$lib/components/MiniPlayer.svelte';
+	import Reminders from '$lib/components/Reminders.svelte';
+	import CornerStack from '$lib/components/CornerStack.svelte';
+	import Changelog from '$lib/components/Changelog.svelte';
 	import WallpaperBackground from '$lib/components/WallpaperBackground.svelte';
 
 	import DynamicFavicon from '$lib/components/DynamicFavicon.svelte';
@@ -182,11 +185,19 @@
 		<WallpaperBackground wallpaperId={viewPrefs.wallpaperId || null} />
 	{/if}
 <DynamicFavicon />
-	<div class="w-full max-w-[1200px] min-h-dvh flex flex-col px-16 pb-6 pt-[calc(1.5rem+env(safe-area-inset-top,0px))] max-lg:px-12 max-md:px-5 max-md:pb-[calc(6rem+env(safe-area-inset-bottom,0px))] max-md:pt-[calc(5.5rem+env(safe-area-inset-top,0px))] max-md:max-w-full max-xs:px-4 max-xs:pt-[calc(5.25rem+env(safe-area-inset-top,0px))] {viewPrefs.iconStyle === 'grayed' ? 'grayed-widgets' : ''} {wallpapersEnabled && theme === 'auto' && viewPrefs.wallpaperEnabled !== false ? 'wallpaper-active' : ''}">
+	<div class="w-full max-w-[1200px] min-h-dvh flex flex-col px-16 pb-6 pt-[calc(1.5rem+env(safe-area-inset-top,0px))] max-lg:px-12 max-md:px-5 {footerEnabled ? 'max-md:pb-[calc(1.25rem+env(safe-area-inset-bottom,0px))]' : 'max-md:pb-[calc(4.75rem+env(safe-area-inset-bottom,0px))]'} max-md:pt-[calc(1.5rem+env(safe-area-inset-top,0px))] max-md:max-w-full max-xs:px-4 max-xs:pt-[calc(1.25rem+env(safe-area-inset-top,0px))] {viewPrefs.iconStyle === 'grayed' ? 'grayed-widgets' : ''} {wallpapersEnabled && theme === 'auto' && viewPrefs.wallpaperEnabled !== false ? 'wallpaper-active' : ''}">
+		<!-- Phones: the footer's line sits level with the floating account
+		     button; with no footer, the bottom padding keeps the last apps
+		     clear of it (12px + 50px button + a gap). -->
 		<!-- Fixed top offset rather than vertical centring: centring would move
 		     the search bar whenever the content grows, e.g. entering edit mode.
 		     The flex-1 spacer below pushes the footer to the viewport bottom. -->
 		<div class="shrink-0 h-[18vh] max-md:hidden"></div>
+		<!-- Phones: share the free height with the spacer above the footer, so
+		     the clock and search come down within a thumb's reach. Capped so the
+		     header starts no lower than a quarter of the screen; a full grid
+		     leaves no free height and this collapses to nothing. -->
+		<div class="hidden max-md:block flex-1 max-h-[calc(25dvh-1.5rem-env(safe-area-inset-top,0px))]"></div>
 		<!-- Fill mode backwards, not both: a filled opacity animation keeps the
 		     wrapper a backdrop root, and the weather menu's glass inside it
 		     would stop blurring the search bar below. -->
@@ -194,10 +205,6 @@
 			<Header lat={$prefs.lat} lon={$prefs.lon} placeName={$prefs.locationSource === 'manual' ? $prefs.locationName : ''} locationSource={$prefs.locationSource} showWeather={weatherEnabled} />
 
 		</div>
-		<!-- On mobile the header is fixed and the search bar sits at the bottom,
-		     so nothing moves if the icons centre: this spacer and the flex-1
-		     before the footer split the free height. -->
-		<div class="hidden max-md:block flex-1"></div>
 		<div class="launcher-host opacity-0 animate-fade-in-up [animation-fill-mode:both] [animation-delay:75ms] relative z-20">
 			<WidgetGrid bind:guideApp bind:editMode {searchEnabled} {customizationEnabled} onSettingsOpen={() => manageAppsOpen = true} />
 		</div>
@@ -223,7 +230,11 @@
 		<ManageApps bind:open={manageAppsOpen} />
 	{/if}
 	<InstallPrompt devMode={data.devMode} ready={onboarded && !passwordGate} />
-	<MiniPlayer />
+	<CornerStack>
+		<Reminders />
+		<MiniPlayer />
+	</CornerStack>
+	<Changelog ready={onboarded && !passwordGate} />
 
 	<!-- Post-login onboarding (only when auth + onboarding enabled) -->
 	{#if authEnabled && onboardingEnabled && !onboarded && !passwordGate}

@@ -15,13 +15,18 @@ Holm has two kinds of app support.
 | Jellyfin | Movies, shows and music | Quick Connect sign-in, no key to copy | `!jf` |
 | Planka | Cards, by name (cached up to 5 minutes, `cache_ttl`) | URL + API key | `!p` |
 | Karakeep | Bookmarks (full text) | URL + API key | `!b` |
+| Linkwarden | Links by name, URL, description and tags (full text with Meilisearch) | URL + access token | `!lw` |
 | Plex | Movies, shows and music | Code at plex.tv/link, no key to copy | `!plex` |
 | Navidrome | Artists, albums and songs; optional player for songs | URL + username + password (only a derived token is kept) | `!nd` |
 | Audiobookshelf | Audiobooks and podcasts | URL + API key | `!abs` |
 | Mealie | Recipes | URL + API token | `!r` |
 | Seerr | Movies and shows: play what's there, request what isn't | Automatic through Jellyfin or Plex; otherwise a Quick Connect code | `!sr` |
+| Calendar (CalDAV) | Events, by title, a month back to a year ahead; optional reminders and upcoming events on the page | URL + username + app password | `!cal` |
+| Miniflux | Articles from the user's feeds (full text) | URL + API key | `!rss` |
+| Komga | Comics, manga and book series (full text) | URL + API key (Komga 1.20 or later) | `!komga` |
+| Kavita | Manga, comics and book series | URL + Auth Key (Kavita 0.8.9 or later) | `!kavita` |
 
-Integrations are marked Alpha in the UI. The only widget so far is Navidrome's player.
+Integrations are marked Alpha in the UI. The widgets so far are Navidrome's player and the Calendar's reminders and upcoming events.
 
 ## Enabling an integration (operator)
 
@@ -37,7 +42,7 @@ integrations:
     tip: "Find the API key under Account settings"  # optional hint on the connect card
     surfaces:
       search: true
-      widgets: false                          # Navidrome only for now: its player
+      widgets: false                          # Navidrome's player, the Calendar's reminders and upcoming events
 ```
 
 The key (`immich`) must match the adapter id. If an app in `apps:` has the same `id`, the integration uses that app's icon. A block without `enabled` counts as enabled.
@@ -58,9 +63,21 @@ Seerr needs no sign-in of its own for users who connected Jellyfin or Plex: Holm
 
 When results come from more than one of Jellyfin, Plex and Seerr, their movies and shows share one **Movies & TV** row, each title once: titles the user has first, then those they can request, then those already requested. Albums and artists stay in their own Jellyfin or Plex row. Music, from Navidrome or that row, shows as compact cards, three to a row on a wide window and two on a narrower one: a small cover on the left, the name on top and the details under it. Seerr results show each title once: if it's on the media server, it opens there (**Play**), and Jellyfin or Plex results for the same title are folded into it. When Jellyfin or Plex returned the title itself, its link is used and Seerr's status is ignored. Each poster has the icon of the app it opens in on its top-right corner, in the icon style picked for the apps: Jellyfin or Plex for a title the user has, Seerr for one they don't. Movies and shows the user has carry a play mark on the poster that plays them in Jellyfin or Plex. For a title that isn't there, hovering the poster shows a **Request** chip along its bottom that files the request in Seerr as that user; it spins while the request is filed and then stays as a disabled **Requested** with a clock, as it does for any title Seerr already has a request for. A show that's only partly there can still be requested from its Seerr result, and the request asks for just the missing seasons; when Jellyfin or Plex also returned the show, its result is the one shown and has no **Request**. Users whose Seerr account can't request (or can't request that kind of title) see no **Request** at all. Clicking anywhere else on a movie or show poster, from Seerr, Jellyfin or Plex, opens a detail view in the search panel (backdrop, year, runtime, rating, genres, overview, cast) with **Play on Jellyfin** or **Plex**, or **Request** and **Open in Seerr**; it never requests on its own. → opens it for the selected poster, and ← or Esc goes back to the results. While the row is still loading with nothing to show yet, it shows placeholder posters.
 
-Navidrome has the first widget, a **Player**. The operator allows it with `surfaces: { widgets: true }` under `navidrome`, and each user turns it on with the **Player** switch on their Navidrome card; it starts off. With it off, a song opens its album in Navidrome like any other result. With it on, a song plays in Holm itself: clicking it, or Enter, starts it in a small player in the bottom-right corner (above the search bar on a phone) with the cover, title, artist, time played and length, and play/pause, stop and mute. There's no seeking or queue; picking another song replaces the one playing, and **Open in Navidrome** (⌘↵, or ⌘-click) still opens the album. The audio comes through Holm's proxy with the user's own token, as the original file, so the browser has to support its format (MP3, AAC, FLAC and Ogg play everywhere; ALAC only in Safari).
+Navidrome has the first widget, a **Player**. The operator allows it with `surfaces: { widgets: true }` under `navidrome`, and each user turns it on with the **Player** switch on their Navidrome card; it starts off. With it off, a song opens its album in Navidrome like any other result. With it on, a song plays in Holm itself: clicking it, or Enter, starts it in a small player in the bottom-right corner (above the search bar on a phone) with the cover, title, artist, time played and length, and play/pause, stop and mute. Reloading the page brings the song back where it was, paused, with one tap to carry on (browsers don't let a page start sound on its own before it's been clicked); this is per tab, and **Stop** clears it. There's no seeking or queue; picking another song replaces the one playing, and **Open in Navidrome** (⌘↵, or ⌘-click) still opens the album. The audio comes through Holm's proxy with the user's own token, as the original file, so the browser has to support its format (MP3, AAC, FLAC and Ogg play everywhere; ALAC only in Safari).
+
+The Calendar works with any CalDAV server: Nextcloud, Radicale, Baïkal, Stalwart, Fastmail, iCloud and others. The user gives the address their calendar app uses (for Nextcloud, `https://<host>/remote.php/dav`; a server root or a single calendar's URL works too), a username and an app password. Holm finds every calendar that holds events and skips task lists. Search matches event titles from 30 days back to a year ahead, upcoming events first, with recurring events listed once per occurrence; picking one opens the **Calendar web address**, under **Advanced** on the card. That is optional: for Nextcloud, iCloud and Fastmail Holm knows the calendar page, and anywhere else without one (Stalwart has no web calendar) picking an event shows its details: time, place and notes (its links clickable), a **Join call** button when the event has a video call link, with a chip naming the service (Stalwart, Nextcloud, iCloud, Fastmail) when Holm can tell it from the URL. Google Calendar has no app passwords for CalDAV, so it needs a sign-in of its own and isn't supported yet. The app password is stored encrypted like any other key. Holm follows the server's redirects only to the same origin or the same host over https, plus, for iCloud, to the account's own `pNN-caldav.icloud.com`, so the password never goes anywhere else. Changing the web address keeps the app password; changing the CalDAV URL to another server asks for it again. Recurring events rely on the server expanding them (CalDAV's `expand`), as Nextcloud, Radicale, Baïkal, Stalwart and Fastmail do (iCloud is untested); on a server that doesn't, a series shows up nowhere rather than only its first occurrence. Stalwart leaves the reminders out of the occurrences it expands, so for events that come back without one, Holm reads the stored event and gives each occurrence its reminders.
+
+A user with calendars in more than one place (say iCloud for the family and Fastmail for work) adds the others with **+ Add account** under **Accounts** on the Calendar card, up to five more, each tested before it's saved. Each account is a row that opens its settings on click. Search, reminders and upcoming events read every account, and one that can't be reached is left out rather than hiding the rest. Each account's app password is stored encrypted and kept to its own server, like the first one's; disconnecting the Calendar removes them all. Each account has a **Color**, picked from the Mac's swatches (blue for the first, and a color none of the others has for each one added): its events show a dot in that color in the upcoming list, and a calendar icon tinted with it in reminders and search.
+
+The Calendar's widgets are **Reminders** and **Upcoming events**. The operator allows them with `surfaces: { widgets: true }` under `caldav`, and connecting a calendar turns both on; each user can turn them off with the one widgets switch on their Calendar card.
+
+**Upcoming events** puts the next event on a small line under the clock, the way a phone's "at a glance" does: its title and when ("in 20 min", "14:30", "tomorrow 10:00"), preferring a timed event over an all-day one. Clicking it opens the week ahead, grouped by day, with each event's time and place; picking one opens its details in search, the same as picking it from the results. It refreshes every 5 minutes and when the tab comes back into view.
+
+With **Reminders** on, Holm shows each event's own reminders on the page, at the times set in the calendar app (15 minutes before, a day before, and so on); an event with no reminder set gets none. The page asks Holm for what's due in the next day every 5 minutes and when the tab comes back into view, so a reminder added in the calendar shows up within about 5 minutes. Each one appears in the bottom-right corner (above the search on a phone, and above the player while a song is playing) with the title, how soon it starts, the place, **Join call** for an event with a video call link, **Open**, **Snooze** and **Dismiss**. It shows in every open Holm tab and stays up, through reloads, until dismissed; dismissing or snoozing it in one tab clears it in all of them. **Snooze** brings it back in 10 minutes, or when the event starts if that's sooner, as the Mac's Calendar does. One that fell due while the page was closed still shows when it opens, as long as its event isn't over. Reminders that only send email are left to the calendar server.
 
 Navidrome asks for a password once. Holm computes the Subsonic token `md5(password + salt)` with a random salt and stores the salt and token, encrypted at rest, never the password. The token works for the Subsonic API until the password changes, and anyone holding the salt and token can try to brute-force a weak password, so use a strong one. Changing the username asks for the password again.
+
+An integration's widgets switch is also in **Configure → Widgets**. Once an integration is connected, it appears there next to Weather and Search, and both places flip the same switch.
 
 After connecting, results from the app appear in the search bar. Typing `!<shortcut>` searches only that app.
 
@@ -86,7 +103,9 @@ An integration is one file plus one import line. The settings form, API routes a
    	shortcut: 'm',               // default !scope
    	description: 'One-line summary',
 
-   	// Fields rendered in the connect form: url, text or secret
+   	// Fields rendered in the connect form: url, text or secret; advanced: true
+   	// folds one away under Advanced. type: 'color' with options: [{ value, label, hex }]
+   	// is a row of swatches
    	configSchema: [
    		{ key: 'url', type: 'url', label: 'URL', required: true, fromOperatorDefault: 'default_url' },
    		{ key: 'apiKey', type: 'secret', label: 'API key', required: true }

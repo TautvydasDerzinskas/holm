@@ -96,7 +96,8 @@
 <style>
 	.install-prompt {
 		position: fixed;
-		z-index: 60;
+		/* Under the account menu (60), whose phone sheet covers the bottom of the screen. */
+		z-index: 59;
 		/* Centred with margins, not a transform: slide-up animates transform. */
 		left: 0;
 		right: 0;
@@ -110,7 +111,7 @@
 		border-radius: 18px;
 		box-shadow: 0 12px 32px -8px rgba(0, 0, 0, 0.45);
 	}
-	/* Phones: the search is docked at the bottom, so sit just above it. */
+	/* Phones: the account button is in the bottom-right corner, so sit just above it. */
 	@media (max-width: 767px) {
 		.install-prompt { bottom: calc(env(safe-area-inset-bottom, 0px) + 12px + 50px + 10px); }
 	}

@@ -118,3 +118,20 @@ jobs:
         run: |
           git tag "v${{ steps.bump.outputs.version }}"
           git push origin "v${{ steps.bump.outputs.version }}"
+
+      # A GitHub Release for the tag, so Holm's update check (and anyone
+      # watching the repo) sees it. The notes are that version's section of
+      # CHANGELOG.md; an automatic patch bump has none, so it gets one line.
+      - name: GitHub release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          V: ${{ steps.bump.outputs.version }}
+        run: |
+          awk -v v="$V" '
+            /^## / { if (on) exit; h = $0; sub(/^## v?/, "", h); split(h, a, /[ \t]/); on = (a[1] == v); next }
+            on
+          ' CHANGELOG.md > notes.md
+          if ! grep -q '[^[:space:]]' notes.md; then
+            echo "Maintenance build of Holm $V from ${GITHUB_SHA::7}. Notable changes are in CHANGELOG.md." > notes.md
+          fi
+          gh release create "v$V" --title "Holm $V" --notes-file notes.md --verify-tag
