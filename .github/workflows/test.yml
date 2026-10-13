@@ -1,4 +1,4 @@
-name: Build
+name: Build & test
 
 on:
   pull_request:
@@ -19,3 +19,18 @@ jobs:
 
       - name: Build
         run: npm run build
+
+      - name: Test
+        run: npm test
+
+  # main only takes dev from this repo. The test lives in the `if`, not in
+  # `run:`, so the branch name never reaches a shell. Skipped (passing) on
+  # PRs into dev.
+  only-dev-to-main:
+    if: github.base_ref == 'main' && (github.head_ref != 'dev' || github.event.pull_request.head.repo.full_name != github.repository)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Refuse
+        run: |
+          echo "::error::PRs into main must come from dev"
+          exit 1
