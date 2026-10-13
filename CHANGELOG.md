@@ -2,7 +2,12 @@
 
 What changed in each Holm release, newest first. Holm shows a version's
 section in its "What's new" dialog, so each entry is written for the people
-using it. Headings are `## <version> — <date>`.
+using it. Headings are `## <version> — <date>`. One line per change: a bold
+label, then at most about twelve words.
+
+## 0.6.1 — 2026-10-13
+
+- **Fixed:** wallpaper missing after a reload.
 
 ## 0.6.0 — 2026-10-13
 
