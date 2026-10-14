@@ -74,7 +74,10 @@ customization:
 #   tags            Optional list of strings, shown (up to three) on the app's search result.
 #   app_store       Optional: { ios, android } links for onboarding.
 #   browser_extension  Optional URL for onboarding.
-#   setup_guide     Optional first-run walkthrough.
+#   on_click        What a plain click on the tile does: open (default), getting_started
+#                   (the Getting started card, until the user ticks "Don't show again"),
+#                   or menu (the tile's right-click menu).
+#   setup_guide     Optional Getting started card (browser or mobile app), from the tile's right-click menu.
 apps:
   - id: photos
     name: "Photos"
@@ -82,6 +85,7 @@ apps:
     icon: "di:immich"
     self_hosted: true
     default_visible: true
+    on_click: getting_started
     tags: ["media", "selfhosted"]
     app_store:
       ios: "https://apps.apple.com/app/immich/id1613945652"

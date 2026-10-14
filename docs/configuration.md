@@ -99,6 +99,7 @@ apps:
     tile_color: "#4250AF"                  # brand tile background (optional)
     self_hosted: true                      # listed in onboarding's services slide
     default_visible: true                  # placed on a new user's surface
+    on_click: getting_started              # optional: open (default) | getting_started | menu
     app_store:
       ios: "https://apps.apple.com/..."
       android: "https://play.google.com/..."
@@ -108,6 +109,16 @@ apps:
         - label: "Download"
           desc: "Get the app from your store."
 ```
+
+A setup guide opens as a **Getting started** card from the tile's right-click or long-press menu. It asks how the user wants to use the app: **In the browser** opens it, **In the mobile app** shows the server URL, store links and the steps. The line under the app name is the app's `onboarding.services[].desc`, or `setup_guide.subtitle` when there is none.
+
+`on_click` sets what a plain click (or tap) on the tile does:
+
+- `open`, or unset: opens the app.
+- `getting_started`: opens the Getting started card instead, until the user ticks **Don't show again**; a tip says the right-click / long-press menu brings it back. Needs a `setup_guide` or `app_store` links; with neither, the click opens the app.
+- `menu`: opens the tile's right-click / long-press menu.
+
+Ctrl/⌘-click always opens the app in a new tab. Any other value opens the app, and Holm logs a warning at startup.
 
 ### Who sees an app
 
@@ -152,7 +163,7 @@ Direct URLs also work: `"https://cdn.example.com/icon.svg"`.
 
 ## Onboarding
 
-Onboarding uses a composable `slides` array. Each slide has a `type` — built-in types (`welcome`, `services`) have special behavior, while `privacy`, `security`, and `list` all render through a generic list engine with per-type defaults.
+Onboarding uses a composable `slides` array. Each slide has a `type` — built-in types (`welcome`, `services`) have special behavior, while `privacy`, `security`, `password`, and `list` all render through a generic list engine with per-type defaults.
 
 ```yaml
 onboarding:
@@ -166,6 +177,7 @@ onboarding:
         - text: "Your data lives on **our hardware**"
         - text: "**No tracking**, no ads — ever"
     - type: security                       # defaults: lock icon, security tips
+    - type: password                       # defaults: key icon, "Change password", tips
     - type: list                           # fully custom slide (no defaults)
       icon: info                           # any Lucide icon name or direct URL
       title: "House Rules"
@@ -179,7 +191,9 @@ onboarding:
       footer: "Thanks for being here"
 ```
 
-All list-based types (`privacy`, `security`, `list`) support: `icon`, `title`, `subtitle`, `items`, `footer`, `list_icon`. Items auto-detect format: `{text}` renders with bold markdown, `{title, desc}` renders as **title** — desc. Both formats can coexist in one slide.
+All list-based types (`privacy`, `security`, `password`, `list`) support: `icon`, `title`, `subtitle`, `items`, `footer`, `list_icon`. Items auto-detect format: `{text}` renders with bold markdown, `{title, desc}` renders as **title** — desc. Both formats can coexist in one slide.
+
+**Password slide:** `password` asks a new user to replace the password they were given. It shows only when `auth.password_change_url` is set and the user has not confirmed yet; it is never added on its own, so list it to use it. Under the list it adds a "Change password" button that opens `password_change_url` in a new tab, and "Done, continue" unlocks once that tab has been opened. Listing it also turns on a standalone version for users who are already onboarded.
 
 **Icons:** Use any [Lucide](https://lucide.dev/icons) icon by name (e.g., `shield-check`, `lock`, `info`). Direct URLs also work. Browse 1400+ icons at [lucide.dev/icons](https://lucide.dev/icons).
 
@@ -216,6 +230,7 @@ wallpapers:
 
 weather:
   enabled: true                # users set their location from the weather pill
+                               # and their units under Configure → Widgets
 
 privacy:
   enabled: true
@@ -298,12 +313,12 @@ Every key Holm reads. "Reload" means a save takes effect without a restart.
 | `branding.show_footer` | bool | `true` | yes | Footer with the brand name and register / privacy links |
 | `auth.enabled` | bool | `false` | yes | `false` = every visitor is the same Guest with no groups |
 | `auth.oidc.issuer` / `client_id` / `client_secret` / `scopes` / `redirect_base` | string | none | restart | Endpoints are discovered from the issuer |
-| `auth.password_change_url` | URL | none | yes | Adds "Change password" to the user menu |
+| `auth.password_change_url` | URL | none | yes | Adds "Change password" to the user menu; also the target of the `password` onboarding slide |
 | `auth.registration.enabled` / `url` | bool / URL | `false` | yes | A "Register" link on the sign-in screen |
 | `database.enabled` | bool | `true` | restart | `false` = preferences in each browser only, integrations off |
 | `database.path` | path | `./data/holm.db` | restart | `DATABASE_PATH` wins |
 | `customization.enabled` | bool | `false` | yes | Without it there is no Configure panel and the grid is fixed |
-| `apps[]` | list | `[]` | yes | Fields under [Apps](#apps): `id`, `name`, `url`, `icon`, `icon_mono`, `tile_color`, `self_hosted`, `default_visible`, `groups`, `tags` (shown on search results), `app_store`, `browser_extension`, `setup_guide` |
+| `apps[]` | list | `[]` | yes | Fields under [Apps](#apps): `id`, `name`, `url`, `icon`, `icon_mono`, `tile_color`, `self_hosted`, `default_visible`, `on_click`, `groups`, `tags` (shown on search results), `app_store`, `browser_extension`, `setup_guide` |
 | `search.enabled` / `url` / `param` / `name` / `icon` | | enabled, Google, `q` | yes | The fallback web search |
 | `integrations.<id>.enabled` | bool | on when the block exists | yes | `false` hides it; so does leaving the block out |
 | `integrations.<id>.name` / `shortcut` / `tip` | string | adapter's | yes | Display name, `!scope`, a hint on the connect card |

@@ -290,6 +290,19 @@ Small cards that come and go on their own (a calendar reminder, the music player
 Modals, menus and the search palette share one frosted-glass recipe, taken
 from the login card. The tokens live in `src/app.css` (`--glass-*`).
 
+Every glass surface (modals, the sign-in and first-run cards, menus,
+popovers, toasts, the player and the search palette) reads `--glass-bg`,
+`--glass-menu-bg` and `--glass-blur`, through `glass-card` or directly.
+Don't give a new one its own tint or blur: the tokens are what lets one
+setting change all of them. **Configure →
+Appearance → Glass** sets `data-glass` on `<html>`.
+
+| Level     | Tint (dark / light) | Menu tint (dark / light) | Blur |
+| --------- | ------------------- | ------------------------ | ---- |
+| `clear`   | none                | 32% / 50%                | 12px, saturate 1.2 |
+| `frosted` (default) | 8% white / 72% white | 58% / 80% | 40px, saturate 1.6 |
+| `solid`   | opaque `#09090b` on Dark, 75% on Dynamic / opaque white | same as tint | 40px, saturate 1.6 |
+
 | Class                     | Use for                                   |
 | ------------------------- | ----------------------------------------- |
 | `glass-card`              | Modals and first-run cards: clear glass   |
@@ -298,7 +311,7 @@ from the login card. The tokens live in `src/app.css` (`--glass-*`).
 | `segmented` / `segmented-item` | Two-to-four-way choices (Theme, Icon style) |
 | `glass-check`             | Checkboxes                                |
 
-Three rules the browser enforces:
+Four rules the browser enforces:
 
 - **Never put `backdrop-filter` on a modal's wrapper.** It becomes the
   backdrop root and the card inside blurs nothing. `modal-veil` paints its dim
@@ -307,6 +320,10 @@ Three rules the browser enforces:
   below 1 also makes it a backdrop root, so the blur appears only when the
   fade ends and the modal flashes. `modal-veil` fades its own layer instead;
   animate the card, not the wrapper.
+- **A menu inside a glass modal can't be glass.** The modal's blur makes it
+  the backdrop root, so the menu's own blur does nothing and its tint shows
+  the rows under it. Give it `bg-surface-modal` (the integration card's ⋯
+  menu does).
 - **Write only the unprefixed `backdrop-filter`.** The build adds the
   `-webkit-` copy; writing both by hand makes the minifier keep only the
   prefixed one, which Chrome ignores.
@@ -332,7 +349,6 @@ For the gradual refactor of existing components, here's the legacy → v1 mappin
 | Legacy class / pattern                      | Replace with                              |
 | ------------------------------------------- | ----------------------------------------- |
 | `bg-surface-card border border-border-card` | `surface-1`                               |
-| `bg-surface-modal-card backdrop-blur-[80px\|120px] border border-border-modal-card` | `surface-3` |
 | `bg-surface-modal backdrop-blur-xl border border-border-card` (dropdowns) | `surface-2` |
 | `.glass-card`                               | `surface-1` (or `surface-2` if it sits over content) |
 | `bg-surface-card/30 backdrop-blur-sm` (inline tip) | `surface-0` or `surface-1`         |

@@ -18,6 +18,7 @@
 	const welcomeText = onboardingConfig.welcome_text || 'Your data stays on your hardware — no third-party clouds, no tracking, no ads.';
 	const slideHeight = onboardingConfig.slide_height || null;
 	const registrationConfig = siteConfig?.auth?.registration;
+	const passwordChangeUrl = siteConfig?.auth?.password_change_url;
 	const privacyConfig = siteConfig?.privacy || {};
 	const privacyHtml = privacyConfig.html || null;
 	// Only someone who can open the privacy notice is asked to agree to it.
@@ -80,6 +81,15 @@
 		step = 'done';
 		prefs.update((p) => ({ ...p, name: authName, username: authUsername, onboarded: true, firstLoginAt: p.firstLoginAt || new Date().toISOString() }));
 		oncomplete();
+	}
+
+	// The password slide's link opens in a new tab; "Done, continue" unlocks
+	// once it has been opened, then records the change and moves on.
+	let passwordOpened = $state(false);
+	function passwordDone() {
+		prefs.update((p) => ({ ...p, passwordVerified: true }));
+		if (slide < totalSlides - 1) next();
+		else finish();
 	}
 
 
@@ -151,15 +161,28 @@
 				{ title: 'Enable 2FA', desc: 'Use a TOTP app like Aegis or Google Authenticator for all your accounts' },
 				{ title: 'Watch for phishing', desc: 'Only enter credentials at your auth provider' }
 			]
+		},
+		password: {
+			icon: 'key-round',
+			title: 'Change password',
+			subtitle: 'Replace the one you were given',
+			items: [
+				{ text: 'Pick something **only you** know' },
+				{ text: 'Save it in your **password manager**' },
+				{ text: 'It opens in a **new tab**; come back here when you are done' }
+			]
 		}
 	};
 
 	// Build slides from config — merge with type defaults for list-based slides
-	const listTypes = new Set(['privacy', 'security', 'list']);
+	const listTypes = new Set(['privacy', 'security', 'list', 'password']);
 	// The old 'weather' slide asked for location up front; the location is
 	// now set from the weather pill itself, so the type is skipped even when
 	// an existing config still lists it.
-	const configSlides = (onboardingConfig.slides || [{ type: 'welcome' }, { type: 'services' }]).filter(s => s.type !== 'weather');
+	// The password slide asks only while there is a password to change.
+	const configSlides = (onboardingConfig.slides || [{ type: 'welcome' }, { type: 'services' }])
+		.filter(s => s.type !== 'weather')
+		.filter(s => s.type !== 'password' || (passwordChangeUrl && !$prefs.passwordVerified));
 	const slides = configSlides.map(s => {
 		if (listTypes.has(s.type)) {
 			const defaults = slideDefaults[s.type] || {};
@@ -173,6 +196,21 @@
 	function currentSlideType() {
 		return slides[slide]?.type;
 	}
+
+	// The services list keeps every blurb whole and scrolls inside the slide;
+	// a fade on the bottom edge says there is more until the end is reached.
+	let servicesEl = $state();
+	let servicesMore = $state(false);
+	function checkServices() {
+		if (servicesEl) servicesMore = servicesEl.scrollTop + servicesEl.clientHeight < servicesEl.scrollHeight - 4;
+	}
+	$effect(() => {
+		if (!servicesEl) return;
+		const ro = new ResizeObserver(checkServices);
+		ro.observe(servicesEl);
+		checkServices();
+		return () => ro.disconnect();
+	});
 </script>
 
 {#if step === 'welcome'}
@@ -184,7 +222,7 @@
 			{/if}
 		</div>
 		<div class="fixed inset-0 -z-10 pointer-events-none backdrop-blur-[6px] login-overlay"></div>
-		<div class="bg-surface-modal-card backdrop-blur-[80px] border border-border-modal-card rounded-2xl p-8 w-full max-w-[360px] text-center shadow-theme animate-modal-enter">
+		<div class="glass-card rounded-2xl p-8 w-full max-w-[360px] text-center shadow-theme animate-modal-enter">
 			{#if brandLogo}
 				<img src={brandLogo} alt="" class="w-12 h-12 mx-auto mb-4" />
 			{:else}
@@ -239,7 +277,7 @@
 
 {:else if step === 'onboarding'}
 	<div use:dialog={{ label: 'Welcome' }} class="fixed inset-0 modal-veil flex items-center justify-center z-[100] p-4">
-		<div class="bg-surface-modal-card backdrop-blur-[120px] border border-border-modal-card rounded-2xl w-full max-w-[480px] max-h-[calc(100dvh-2rem)] flex flex-col overflow-hidden animate-modal-enter shadow-theme">
+		<div class="glass-card rounded-2xl w-full max-w-[480px] max-h-[calc(100dvh-2rem)] flex flex-col overflow-hidden animate-modal-enter shadow-theme">
 
 			<!-- Slide content: one fixed height for every slide so the card doesn't
 			     jump; on short screens it shrinks and scrolls, keeping the nav bar
@@ -267,16 +305,16 @@
 					</div>
 
 				{:else if currentSlideType() === 'services'}
-					<div class="flex flex-col w-full">
+					<div class="flex flex-col w-full h-full min-h-0">
 						<h2 class="text-[1.2rem] font-semibold mb-1 text-center">What you get</h2>
 						<p class="text-content-dim text-[0.75rem] mb-5 text-center">Included with your account — no extra cost</p>
-						<div class="space-y-1">
+						<div class="services-list min-h-0 flex-1 overflow-y-auto overscroll-contain space-y-1" class:more={servicesMore} bind:this={servicesEl} onscroll={checkServices}>
 							{#each services as svc, i}
-								<div class="flex items-center gap-3 px-2 py-2.5 min-w-0 overflow-hidden">
+								<div class="flex items-start gap-3 px-2 py-2.5 min-w-0">
 									<AppIcon icon={svc.icon} name={svc.name} size="w-4 h-4" wrapSize="w-6 h-6" wrap />
 									<div class="flex flex-col min-w-0">
 										<span class="text-[0.8rem] text-content font-medium">{svc.name}</span>
-										{#if svc.desc}<span class="text-[0.7rem] text-content-dim truncate">{svc.desc}</span>{/if}
+										{#if svc.desc}<span class="text-[0.7rem] text-content-dim leading-snug">{svc.desc}</span>{/if}
 									</div>
 								</div>
 							{/each}
@@ -284,7 +322,7 @@
 						<p class="text-content-dim text-[0.7rem] mt-auto pt-4 text-center">All self-hosted on our hardware. Your data never leaves.</p>
 					</div>
 
-				{:else if currentSlideType() === 'privacy' || currentSlideType() === 'security' || currentSlideType() === 'list'}
+				{:else if listTypes.has(currentSlideType())}
 					{@const s = slides[slide]}
 					{@const defaultListIcon = resolveSlideIcon(s.list_icon || 'check')}
 					<div class="flex flex-col w-full">
@@ -309,6 +347,15 @@
 								</div>
 							{/each}
 						</div>
+						{#if s.type === 'password'}
+							<a
+								href={passwordChangeUrl}
+								target="_blank"
+								rel="noopener noreferrer"
+								onclick={() => passwordOpened = true}
+								class="self-center mt-5 py-2.5 px-6 rounded-[10px] text-[0.85rem] font-medium font-mono no-underline cursor-pointer login-btn"
+							>Change password</a>
+						{/if}
 						{#if s.footer}
 							<p class="text-content-dim/50 text-[0.7rem] mt-auto pt-4 text-center">{s.footer}</p>
 						{/if}
@@ -324,9 +371,9 @@
 				<!-- Dot indicators -->
 				<div class="flex gap-3">
 					{#each Array(totalSlides) as _, i}
-						<!-- 6px dot, ~18x30px tap area via ::before -->
+						<!-- 8px dot, ~20x32px tap area via ::before -->
 						<button
-							class="relative w-1.5 h-1.5 rounded-full border-none cursor-pointer transition-all duration-200 p-0 before:absolute before:content-[''] before:-inset-x-1.5 before:-inset-y-3 {i === slide ? 'dot-active w-4' : 'dot-inactive'}"
+							class="relative w-2 h-2 rounded-full border-none cursor-pointer transition-all duration-200 p-0 before:absolute before:content-[''] before:-inset-x-1.5 before:-inset-y-3 {i === slide ? 'dot-active w-5' : 'dot-inactive'}"
 							aria-label="Slide {i + 1} of {totalSlides}"
 							aria-current={i === slide ? 'step' : undefined}
 							onclick={() => slide = i}
@@ -341,7 +388,13 @@
 						disabled={slide === 0}
 						onclick={back}
 					>Back</button>
-					{#if slide === totalSlides - 1}
+					{#if currentSlideType() === 'password'}
+					<button
+						class="py-2 px-5 rounded-lg text-[0.8rem] font-mono cursor-pointer transition-colors duration-150 login-btn disabled:opacity-40 disabled:cursor-default"
+						disabled={!passwordOpened}
+						onclick={passwordDone}
+					>Done, continue</button>
+					{:else if slide === totalSlides - 1}
 					<button
 						class="py-2 px-5 rounded-lg text-[0.8rem] font-mono cursor-pointer transition-colors duration-150 login-btn"
 						onclick={finish}
@@ -360,6 +413,10 @@
 {/if}
 
 <style>
+	.services-list.more {
+		mask-image: linear-gradient(to bottom, #000 calc(100% - 2.5rem), transparent);
+		-webkit-mask-image: linear-gradient(to bottom, #000 calc(100% - 2.5rem), transparent);
+	}
 	.onboarding-privacy-md :global(h1),
 	.onboarding-privacy-md :global(h2),
 	.onboarding-privacy-md :global(h3) {

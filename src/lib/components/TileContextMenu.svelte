@@ -44,14 +44,23 @@
 		});
 	});
 
-	// Dismiss on outside click.
+	// Dismiss on outside click, or on Escape (focus goes back to the tile).
 	$effect(() => {
 		if (!browser) return;
 		function dismiss(e) {
 			if (menuEl && !menuEl.contains(e.target)) onclose();
 		}
+		function onkey(e) {
+			if (e.key !== 'Escape') return;
+			onclose();
+			anchor?.focus();
+		}
 		window.addEventListener('click', dismiss);
-		return () => window.removeEventListener('click', dismiss);
+		window.addEventListener('keydown', onkey);
+		return () => {
+			window.removeEventListener('click', dismiss);
+			window.removeEventListener('keydown', onkey);
+		};
 	});
 </script>
 
@@ -104,7 +113,7 @@
 		{#if hasGuide}
 			<button type="button" class="tile-menu-item" role="menuitem" onclick={() => onguide(app)}>
 				<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M9.1 9a3 3 0 0 1 5.8 1c0 2-3 3-3 3"/><path d="M12 17h.01"/></svg>
-				Setup guide
+				Getting started
 			</button>
 		{/if}
 	</div>

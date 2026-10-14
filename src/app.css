@@ -27,7 +27,6 @@
 	--color-surface-overlay: var(--overlay);
 	--color-surface-overlay-strong: var(--overlay-strong);
 	--color-surface-input: var(--input-bg);
-	--color-surface-modal-card: var(--modal-card-bg);
 	--color-surface-pill: var(--pill-bg);
 	--color-surface-settings-btn: var(--settings-btn-bg);
 	--color-surface-toggle-on: var(--toggle-on);
@@ -40,7 +39,6 @@
 	/* Borders */
 	--color-border-card: var(--card-border);
 	--color-border-input: var(--input-border);
-	--color-border-modal-card: var(--modal-card-border);
 	--color-border-pill: var(--pill-border);
 	/* Shadow */
 	--shadow-theme: 0 25px 50px -12px var(--shadow);
@@ -159,8 +157,6 @@
 	--pill-border: rgba(255, 255, 255, 0.2);
 	--pill-bg: rgba(255, 255, 255, 0.15);
 	--shadow: rgba(0, 0, 0, 0.3);
-	--modal-card-bg: rgba(255, 255, 255, 0.08);
-	--modal-card-border: rgba(255, 255, 255, 0.12);
 	--settings-btn-bg: rgba(255, 255, 255, 0.08);
 	--icon-filter-white: brightness(0) invert(1);
 	--icon-filter-grayed: brightness(0) invert(1) opacity(0.5);
@@ -248,8 +244,6 @@ body:not(.theme-dark):not(.theme-light) .hero-search:not(.is-open) .hero-search-
 	--pill-border: rgba(0, 0, 0, 0.25);
 	--pill-bg: rgba(0, 0, 0, 0.1);
 	--shadow: rgba(0, 0, 0, 0.08);
-	--modal-card-bg: #ffffff;
-	--modal-card-border: rgba(0, 0, 0, 0.15);
 	--settings-btn-bg: rgba(0, 0, 0, 0.08);
 	--icon-filter-white: brightness(0);
 	--icon-filter-grayed: brightness(0) opacity(0.5);
@@ -266,7 +260,6 @@ body:not(.theme-dark):not(.theme-light) .hero-search:not(.is-open) .hero-search-
 	--color-surface-overlay: var(--overlay);
 	--color-surface-overlay-strong: var(--overlay-strong);
 	--color-surface-input: var(--input-bg);
-	--color-surface-modal-card: var(--modal-card-bg);
 	--color-surface-pill: var(--pill-bg);
 	--color-surface-settings-btn: var(--settings-btn-bg);
 	--color-surface-toggle-on: var(--toggle-on);
@@ -277,7 +270,6 @@ body:not(.theme-dark):not(.theme-light) .hero-search:not(.is-open) .hero-search-
 	--color-content-dim: var(--text-dim);
 	--color-border-card: var(--card-border);
 	--color-border-input: var(--input-border);
-	--color-border-modal-card: var(--modal-card-border);
 	--color-border-pill: var(--pill-border);
 	--shadow-theme: 0 25px 50px -12px var(--shadow);
 
@@ -341,19 +333,19 @@ body {
 	background: #fafafa;
 }
 .dot-inactive {
-	background: #3f3f46;
+	background: rgba(255, 255, 255, 0.35);
 }
 .dot-inactive:hover {
-	background: #71717a;
+	background: rgba(255, 255, 255, 0.6);
 }
 .theme-light .dot-active {
 	background: #18181b;
 }
 .theme-light .dot-inactive {
-	background: #d4d4d8;
+	background: rgba(0, 0, 0, 0.22);
 }
 .theme-light .dot-inactive:hover {
-	background: #a1a1aa;
+	background: rgba(0, 0, 0, 0.45);
 }
 .slide-icon {
 	filter: invert(1) opacity(0.7);
@@ -387,6 +379,35 @@ body {
 	--glass-border: rgba(0, 0, 0, 0.08);
 	--glass-highlight: inset 0 1px 0 rgba(255, 255, 255, 0.7);
 	--segment-on: #ffffff;
+}
+/* Glass density, from Configure → Appearance. Frosted (the default) is the
+   recipe above. Clear drops the card tint and most of the blur so the
+   wallpaper shows, keeping a light menu tint for readable text. Solid is
+   the opaque page colour on the Dark and Light themes, and 75% dark over
+   the same blur on Dynamic so a little wallpaper shows. Every glass
+   surface reads these tokens.
+   The level sits on <html>, not <body>: tokens built from these in :root
+   (the search palette's) take their value there. */
+html[data-glass='clear'] {
+	--glass-bg: transparent;
+	--glass-menu-bg: rgba(28, 28, 32, 0.32);
+	--glass-blur: blur(12px) saturate(1.2);
+}
+html[data-glass='solid'] {
+	--glass-bg: rgba(9, 9, 11, 0.75);
+	--glass-menu-bg: rgba(9, 9, 11, 0.75);
+}
+html[data-glass='solid'] body.theme-dark {
+	--glass-bg: #09090b;
+	--glass-menu-bg: #09090b;
+}
+html[data-glass='clear'] body.theme-light {
+	--glass-bg: transparent;
+	--glass-menu-bg: rgba(255, 255, 255, 0.5);
+}
+html[data-glass='solid'] body.theme-light {
+	--glass-bg: #ffffff;
+	--glass-menu-bg: #ffffff;
 }
 .glass-card {
 	background: var(--glass-bg);
@@ -547,8 +568,10 @@ body:not(.theme-dark) :is(.app-icon-wrap, .app-tile-icon) img[src$="/di/karakeep
 .wallpaper-active .surface-footer .edit-chip,
 .wallpaper-active .surface-actions .tray-reset,
 .wallpaper-active .surface-actions .tray-done {
+	/* A dark tint whatever the theme, for the white text; the blur follows
+	   the glass level. */
 	background: rgba(0,0,0,0.22);
-	backdrop-filter: blur(12px);
+	backdrop-filter: var(--glass-blur);
 	border-color: rgba(255,255,255,0.22);
 	color: rgba(255,255,255,0.85);
 	opacity: 1;
@@ -730,27 +753,6 @@ body.search-active .dashboard-wallpaper {
 @media (max-width: 767px) {
 	.dashboard-header { padding-right: 0; }
 }
-.dashboard-header::before {
-	content: '';
-	position: absolute;
-	inset: 0;
-	left: -1.5rem;
-	right: -1.5rem;
-	background: linear-gradient(to bottom, rgba(15, 15, 17, 0.55), rgba(15, 15, 17, 0.35));
-	backdrop-filter: blur(10px);
-	-webkit-backdrop-filter: blur(10px);
-	z-index: -1;
-	opacity: 0;
-	transition: opacity 200ms ease-out;
-	pointer-events: none;
-}
-.theme-light .dashboard-header::before {
-	background: linear-gradient(to bottom, rgba(255, 255, 255, 0.7), rgba(255, 255, 255, 0.5));
-}
-/* Only show the backdrop once the page has actually scrolled — avoids
-   a muddy bar over the wallpaper at rest. Using the `:is-stuck` helper
-   keeps the at-rest look clean. */
-.dashboard-header.is-stuck::before { opacity: 1; }
 body.search-active .hero-area {
 	position: relative;
 	z-index: 2;
@@ -1176,149 +1178,6 @@ body.search-active .launcher-host { z-index: 40; }
 	pointer-events: none;
 }
 
-.app-tray {
-	width: 100%;
-	height: 100%;
-	padding: 0;
-	border-radius: 14px;
-	border: 1px solid var(--border-card, rgba(255, 255, 255, 0.08));
-	background: rgba(15, 15, 17, 0.72);
-	backdrop-filter: blur(12px);
-	-webkit-backdrop-filter: blur(12px);
-	display: flex;
-	align-items: center;
-}
-
-/* Edge fade — conditional via .fade-left / .fade-right */
-.app-tray-fade {
-	flex: 1;
-	min-width: 0;
-	overflow: hidden;
-}
-.app-tray-fade.fade-right {
-	-webkit-mask-image: linear-gradient(to right, black calc(100% - 2rem), transparent);
-	mask-image: linear-gradient(to right, black calc(100% - 2rem), transparent);
-}
-.app-tray-fade.fade-left {
-	-webkit-mask-image: linear-gradient(to right, transparent, black 2rem);
-	mask-image: linear-gradient(to right, transparent, black 2rem);
-}
-.app-tray-fade.fade-left.fade-right {
-	-webkit-mask-image: linear-gradient(to right, transparent, black 2rem, black calc(100% - 2rem), transparent);
-	mask-image: linear-gradient(to right, transparent, black 2rem, black calc(100% - 2rem), transparent);
-}
-
-.app-tray-scroller {
-	display: flex;
-	flex-wrap: nowrap;
-	overflow-x: auto;
-	gap: 0.75rem;
-	padding: 0.25rem 0.75rem;
-	scrollbar-width: none;
-}
-.app-tray-scroller::-webkit-scrollbar { display: none; }
-
-.app-tray-empty {
-	font-size: 0.7rem;
-	color: var(--text-dim);
-	padding: 0.5rem 0.75rem;
-	font-family: var(--font-mono, ui-monospace, SFMono-Regular, monospace);
-}
-
-/* Left / right nav arrows */
-.app-tray-arrow {
-	flex: 0 0 auto;
-	display: flex;
-	align-items: center;
-	justify-content: center;
-	width: 28px;
-	background: transparent;
-	border: none;
-	color: var(--text-muted);
-	cursor: pointer;
-	padding: 0;
-	transition: color 150ms;
-}
-.app-tray-arrow:hover { color: var(--text); }
-
-.app-tray-actions {
-	flex: 0 0 auto;
-	display: flex;
-	align-items: center;
-	gap: 0.25rem;
-	padding-right: 0.5rem;
-	margin-left: 0.5rem;
-}
-@media (max-width: 767px) {
-	.app-tray { flex-wrap: wrap; }
-	.app-tray-actions { flex-basis: 100%; justify-content: flex-end; margin-left: 0; padding: 0.25rem 0.5rem; }
-}
-.app-tray-reset {
-	display: flex;
-	align-items: center;
-	justify-content: center;
-	height: 28px;
-	padding: 0 0.5rem;
-	background: transparent;
-	border: none;
-	border-radius: 8px;
-	color: var(--text-muted);
-	font-size: 0.72rem;
-	font-weight: 500;
-	cursor: pointer;
-	transition: color 150ms, background 150ms;
-}
-.app-tray-reset:hover {
-	color: var(--text);
-	background: rgba(255, 255, 255, 0.06);
-}
-.app-tray-done {
-	display: flex;
-	align-items: center;
-	justify-content: center;
-	height: 28px;
-	padding: 0 0.625rem;
-	background: transparent;
-	border: 1px solid var(--border-card, rgba(255, 255, 255, 0.12));
-	border-radius: 8px;
-	color: var(--text);
-	font-size: 0.72rem;
-	font-weight: 500;
-	cursor: pointer;
-	transition: background 150ms, border-color 150ms;
-}
-.app-tray-done:hover {
-	background: rgba(255, 255, 255, 0.06);
-	border-color: var(--border-card, rgba(255, 255, 255, 0.2));
-}
-@media (min-width: 768px) {
-	.app-tray-done { padding: 0 0.75rem; }
-}
-
-.app-tray-item {
-	flex: 0 0 auto;
-	display: flex;
-	align-items: center;
-	justify-content: center;
-	padding: 0;
-	background: transparent;
-	border: 1px solid transparent;
-	border-radius: 12px;
-	cursor: grab;
-	/* Allow horizontal swipe to scroll the strip; the long-press gate
-	   in JS takes over once the user actually holds an icon. */
-	touch-action: pan-x;
-	-webkit-touch-callout: none;
-	user-select: none;
-	-webkit-user-select: none;
-}
-.app-tray-item:hover { border-color: var(--border-card, rgba(255, 255, 255, 0.1)); }
-.app-tray-item:active { cursor: grabbing; }
-.app-tray-item-selected {
-	border-color: var(--accent, #f5b942);
-	box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent, #f5b942) 30%, transparent);
-}
-
 /* × remove badge on each app icon during edit mode */
 .app-remove-x {
 	position: absolute;
@@ -1396,12 +1255,6 @@ body.search-active .launcher-host { z-index: 40; }
 	border-color: var(--accent, #f5b942) !important;
 }
 .drop-target-hover .drop-overlay {
-	background: rgba(15, 15, 17, 0.85);
-}
-
-/* Tray becomes a drop target while dragging a placed app back. */
-.app-tray.tray-drop-hover {
-	border-color: var(--accent, #f5b942);
 	background: rgba(15, 15, 17, 0.85);
 }
 
@@ -2301,3 +2154,21 @@ body.search-active .launcher-host { z-index: 40; }
    cap height, since the uppercase line has no descenders. */
 .header-glyph { display: inline-flex; width: 1.05em; height: 1.05em; flex-shrink: 0; transform: translateY(-0.07em); }
 .header-glyph > svg { width: 100%; height: 100%; }
+/* The clock and the weather open menus; a soft glass pill on hover says
+   so. Negative margins keep the pill from shifting the line, and the thin
+   vertical padding keeps the clock's and the next event's pills apart
+   inside the header's 0.25rem gap. */
+.header-trigger {
+	display: inline-flex;
+	padding: 0.1rem 0.55rem;
+	margin: -0.1rem -0.55rem;
+	border: 1px solid transparent;
+	border-radius: 10px;
+	transition: background 0.15s, border-color 0.15s;
+}
+.header-trigger:hover,
+.header-trigger[aria-expanded='true'] {
+	background: var(--input-bg);
+	border-color: var(--glass-border);
+}
+.header-trigger:focus-visible { outline: 2px solid var(--text-muted); outline-offset: 2px; }

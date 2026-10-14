@@ -33,9 +33,12 @@
 
 	const siteConfig = getContext('config');
 
-	// Setup guides keyed by app name, for the tile context menu's "Setup Guide"
-	// entry and the modal it opens. Same helper +page.svelte uses for tipApps.
-	const setupGuides = $derived.by(() => buildAppsFromConfig(siteConfig?.apps).setupGuides);
+	// Setup guides keyed by app name, for the tile context menu's "Getting
+	// started" entry and the modal it opens. Same helper +page.svelte uses for
+	// tipApps. clickActions: what a plain click does, by app id.
+	const builtApps = $derived.by(() => buildAppsFromConfig(siteConfig?.apps));
+	const setupGuides = $derived(builtApps.setupGuides);
+	const clickActions = $derived(Object.fromEntries(builtApps.apps.map((a) => [a.id, a.onClick])));
 
 	// Flat catalog: config apps (already filtered by group on the server) +
 	// per-user custom bookmarks. One source of truth used by every
@@ -300,6 +303,24 @@
 	function openGuide(app) {
 		contextApp = null;
 		guideApp = app;
+	}
+
+	// Apps whose Getting started card opens on a plain click
+	// (on_click: getting_started), until this user opts out from the card.
+	function guideClickable(app) {
+		return clickActions[app.id] === 'getting_started' && !!setupGuides[app.name];
+	}
+	function guideOnClick(app) {
+		return guideClickable(app) && !($prefs.guidesDismissed || []).includes(app.id);
+	}
+
+	function dismissGuide(app, dismissed) {
+		const rest = ($prefs.guidesDismissed || []).filter((id) => id !== app.id);
+		prefs.update((p) => ({ ...p, guidesDismissed: dismissed ? [...rest, app.id] : rest }));
+	}
+
+	function closeGuide() {
+		guideApp = null;
 	}
 
 	let searchInput = $state('');
@@ -621,6 +642,16 @@
 								longPressFired = false;
 								return;
 							}
+							// Ctrl/⌘-click still opens a new tab.
+							if (!e.metaKey && !e.ctrlKey && guideOnClick(app)) {
+								e.preventDefault();
+								guideApp = app;
+								return;
+							}
+							if (!e.metaKey && !e.ctrlKey && clickActions[app.id] === 'menu') {
+								showContext(app, e);
+								return;
+							}
 							recordAppOpen(app.id);
 						}}
 						oncontextmenu={editMode ? undefined : (e) => showContext(app, e)}
@@ -708,7 +739,17 @@
 
 <!-- Setup Guide Modal (portal to body) -->
 {#if guideApp && setupGuides[guideApp.name]}
-	<SetupGuideModal app={guideApp} guide={setupGuides[guideApp.name]} {iconStyle} onclose={() => (guideApp = null)} />
+	<SetupGuideModal
+		app={guideApp}
+		guide={setupGuides[guideApp.name]}
+		{iconStyle}
+		dismissible={guideClickable(guideApp)}
+		{openInNewTab}
+		dismissed={($prefs.guidesDismissed || []).includes(guideApp.id)}
+		ondismiss={(d) => dismissGuide(guideApp, d)}
+		onopenapp={() => recordAppOpen(guideApp.id)}
+		onclose={closeGuide}
+	/>
 {/if}
 
 {#if customizationEnabled}
@@ -824,6 +865,7 @@
 	}
 	.add-btn.app-tile-link:hover {
 		background: transparent;
+		border-color: transparent;
 	}
 	.add-icon {
 		background: transparent;
@@ -926,18 +968,21 @@
 		width: 100%;
 		height: 100%;
 		padding: 0.4rem 0.25rem;
+		border: 1px solid transparent;
 		border-radius: 0.6rem;
 		text-decoration: none;
 		color: var(--color-content, #e4e4e7);
-		transition: background 200ms var(--ease-standard, ease);
+		transition: background 200ms var(--ease-standard, ease), border-color 200ms var(--ease-standard, ease);
 		/* Long-press opens our menu; suppress iOS's link preview and text selection */
 		-webkit-touch-callout: none;
 		-webkit-user-select: none;
 		user-select: none;
 	}
+	/* The same glass pill as the header's clock and weather. */
 	.app-tile-link:hover,
 	.app-tile-link.menu-open {
-		background: var(--card-hover);
+		background: var(--input-bg);
+		border-color: var(--glass-border);
 	}
 	.app-tile-icon {
 		width: 44px;
