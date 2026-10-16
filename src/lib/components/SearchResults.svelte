@@ -92,6 +92,38 @@
 		else node.addEventListener('load', done, { once: true });
 	}
 
+	// Rows ease in as they arrive, and the list slides back in when a title's
+	// details close. Closing remounts the list, so `back` keeps its rows from
+	// replaying; it lasts only for the render that remounts them.
+	let back = false;
+	let hadDetail = false;
+	$effect.pre(() => {
+		back = hadDetail && !detail;
+		hadDetail = !!detail;
+		if (back) queueMicrotask(() => (back = false));
+	});
+	function enter(node, cls) {
+		if (!cls) return;
+		node.classList.add(cls);
+		const done = (e) => {
+			if (e.target !== node) return;
+			node.classList.remove(cls);
+			node.removeEventListener('animationend', done);
+		};
+		node.addEventListener('animationend', done);
+	}
+
+	// Request → Requested pops once, when the request lands; a title that was
+	// already requested opens without it.
+	function landed(node, done) {
+		return {
+			update(now) {
+				if (now && !done) enter(node, 'is-landed');
+				done = now;
+			}
+		};
+	}
+
 	function scrollIntoView(node, isSelected) {
 		const run = (sel) => { if (sel) node.scrollIntoView({ block: 'nearest' }); };
 		run(isSelected);
@@ -149,6 +181,7 @@
 								type="button"
 								class="launcher-detail-btn is-primary"
 								class:is-done={detail.request.done}
+								use:landed={detail.request.done}
 								disabled={detail.request.busy || detail.request.done}
 								onmousedown={(e) => e.preventDefault()}
 								onclick={() => detail.request.run?.()}
@@ -187,32 +220,18 @@
 			{/if}
 		</div>
 	{:else}
-	<div class="launcher-scroll" id={listId} role="listbox" aria-label="Results">
+	<div class="launcher-scroll" id={listId} role="listbox" aria-label="Results" use:enter={back && 'is-back'}>
 		{#each sections as section (section.id)}
-			{#if section.items.length || section.loading || section.error}
+			{#if section.items.length || section.error}
 				<div class="launcher-section" role="group" aria-labelledby="{listId}-{section.id}">
 					<div class="launcher-section-label" id="{listId}-{section.id}">
 						<span>{section.label}</span>
-						{#if section.loading}<span class="launcher-spinner" role="status" aria-label="Searching"></span>{/if}
 					</div>
 					{#if section.error}
 						<div class="launcher-error">{section.error}</div>
 					{/if}
 					<div class={section.layout === 'grid' ? 'launcher-grid' : section.layout === 'poster' ? 'launcher-posters' : section.layout === 'tracks' ? 'launcher-tracks' : section.layout === 'answer' ? 'launcher-answers' : 'launcher-rows'}>
-						{#each { length: section.skeleton || 0 } as _}
-							{#if section.layout === 'tracks'}
-								<div class="launcher-item is-skeleton is-track" aria-hidden="true">
-									<div class="launcher-icon-box launcher-track-art"></div>
-									<span class="launcher-text"><span class="launcher-skeleton-line"></span><span class="launcher-skeleton-line is-short"></span></span>
-								</div>
-							{:else}
-								<div class="launcher-item is-skeleton {section.layout === 'grid' ? 'is-tile' : 'is-poster'}" aria-hidden="true">
-									<div class="launcher-thumb-wrap"></div>
-									{#if section.layout === 'poster'}<div class="launcher-skeleton-line"></div><div class="launcher-skeleton-line is-short"></div>{/if}
-								</div>
-							{/if}
-						{/each}
-						{#each section.items as item (item.key)}
+						{#each section.items as item, i (item.key)}
 							{@const isSel = item.key === selectedKey}
 							<!-- Keyboard lives on the search input (combobox + aria-activedescendant). -->
 							<!-- svelte-ignore a11y_click_events_have_key_events -->
@@ -225,6 +244,8 @@
 								class="launcher-item {section.layout === 'grid' ? 'is-tile' : section.layout === 'poster' ? 'is-poster' : section.layout === 'tracks' ? 'is-track' : section.layout === 'answer' ? 'is-answer' : 'is-row'}"
 								class:is-selected={isSel}
 								use:scrollIntoView={isSel}
+								use:enter={!back && 'is-rising'}
+								style:--i={Math.min(i, 5)}
 								onpointermove={() => { if (!isSel) onselect(item.key); }}
 								onmousedown={(e) => e.preventDefault()}
 								onclick={(e) => onrun(item, e)}
@@ -306,6 +327,7 @@
 												class="launcher-request"
 												class:is-busy={item.request.busy}
 												class:is-done={item.request.done}
+												use:landed={item.request.done}
 												tabindex="-1"
 												disabled={item.request.busy || item.request.done}
 												onmousedown={(e) => e.preventDefault()}

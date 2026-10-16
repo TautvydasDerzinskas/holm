@@ -9,10 +9,10 @@
 	import { isMac } from './Keys.svelte';
 	import { bestScore } from '$lib/launcher/match.js';
 	import { buildActions, matchBang } from '$lib/launcher/actions.js';
-	import { arrangeProviderSections } from '$lib/launcher/sections.js';
+	import { arrangeProviderSections, topHit } from '$lib/launcher/sections.js';
 	import { cycleHints } from '$lib/launcher/typedHints.js';
 	import { recordOpen, frecencyScores } from '$lib/launcher/frecency.js';
-	import { instantAnswer } from '$lib/launcher/instant.js';
+	import { instantAnswer, isCalculation } from '$lib/launcher/instant.js';
 
 	const siteConfig = getContext('config');
 	const searchConfig = siteConfig?.search || { enabled: true, url: 'https://www.google.com/search', param: 'q' };
@@ -286,10 +286,11 @@
 		// Bang-prefixed input is a built-in command (`!settings`, `!theme`, …) or
 		// a pending scope shortcut. Either way the user is not asking integrations
 		// to search — skip the dispatch entirely so we don't waste requests on
-		// every keystroke until they hit space and a real query begins.
+		// every keystroke until they hit space and a real query begins. A sum
+		// answers in place, so it isn't sent to them either.
 		const trimmed = (query || '').trim();
 		const isBang = trimmed.startsWith('!');
-		if (hasInlineProviders && !isBang) {
+		if (hasInlineProviders && !isBang && !isCalculation(trimmed)) {
 			dispatchSearch(query, scopedProviders);
 		} else {
 			cancelSearch();
@@ -423,11 +424,11 @@
 	}
 
 	// "Play on Jellyfin": Seerr says which server it plays from; a Jellyfin or
-	// Plex result plays on itself.
+	// Plex result plays on itself. The button wears the accent, like the poster ▶.
 	function openOn(p, r) {
-		if (r.openLabel !== 'Play') return r.openLabel || 'Open';
+		if (r.openLabel !== 'Play') return { label: r.openLabel || 'Open' };
 		const on = r.meta?.merge ? r.meta.playOn : p.integrationName;
-		return on ? `Play on ${on}` : 'Play';
+		return { label: on ? `Play on ${on}` : 'Play' };
 	}
 
 	const detail = $derived(detailView && {
@@ -437,7 +438,7 @@
 		badge: (actionState[detailView.key]?.ok === false && actionState[detailView.key].message) || '',
 		request: resultAction(detailView.key, detailView.p, detailView.r),
 		open: detailView.r.href
-			? { label: openOn(detailView.p, detailView.r), run: () => { openUrl(detailView.r.href, true); finish(); } }
+			? { ...openOn(detailView.p, detailView.r), run: () => { openUrl(detailView.r.href, true); finish(); } }
 			: null,
 		// A link the details bring (an event's video call). The label names
 		// the host, since anyone who sends an invite picks the link.
@@ -615,7 +616,10 @@
 				.map(fromMediaServer);
 			const kind = results[0]?.meta?.kind || p.kind || 'other';
 			const layout = p.layout || (kind === 'photo' ? 'grid' : kind === 'media' ? 'poster' : 'list');
-			const max = layout === 'grid' ? 6 : layout === 'poster' ? 8 : 6;
+			// Songs sit three to a row: with a "More" card, five leave it room on
+			// the second row instead of a row of its own.
+			const more = p.searchUrl && results.length > (layout === 'grid' ? 6 : layout === 'poster' ? 8 : 6);
+			const max = layout === 'grid' ? 6 : layout === 'poster' ? 8 : layout === 'tracks' && more ? 5 : 6;
 			return {
 				id: `p-${p.providerId}`,
 				integrationId: p.integrationId,
@@ -624,8 +628,6 @@
 				layout,
 				kind,
 				loading: !!data.loading && q.length >= 3,
-				// Placeholder posters until the first results arrive.
-				skeleton: !!data.loading && q.length >= 3 && !results.length && layout !== 'list' ? (layout === 'poster' ? 5 : 6) : 0,
 				error: data.error || '',
 				items: [...results.slice(0, max).map((r) => {
 					const key = `r:${p.providerId}:${r.id}`;
@@ -666,7 +668,16 @@
 				}] : [])]
 			};
 		});
-		out.push(...arrangeProviderSections(provSections));
+		const arranged = arrangeProviderSections(provSections);
+		// A result titled just what was typed goes above everything but the
+		// answer, unless an app already matches that well.
+		const hit = !activeScope && !out.some((s) => s.id === 'apps' && s.items.some((i) => bestScore(q, i.title) >= 85)) && topHit(q, arranged);
+		if (hit) {
+			const at = out[0]?.id === 'answer' ? 1 : 0;
+			out.splice(at, 0, { id: 'top', label: 'Top hit', layout: 'list', items: [{ ...hit.item, key: `top:${hit.item.key}`, accessory: hit.item.accessory || hit.section.label }] });
+		}
+		// The top hit leaves its own section, so ↓ doesn't visit it twice.
+		out.push(...(hit ? arranged.map((s) => (s === hit.section ? { ...s, items: s.items.filter((i) => i !== hit.item) } : s)) : arranged));
 
 		// Fallback: the web search, always last. One row only; each app's
 		// results are already above, and its !shortcut still scopes to it.
@@ -984,7 +995,7 @@
 <div class="relative hero-search {isPaletteOpen ? 'is-open' : ''}" bind:this={containerEl} style="--results-max-h: {resultsMaxHeight}px; --search-lift: {lift}px"
 	onfocusout={(e) => { if (inlineOpen && e.relatedTarget && !containerEl.contains(e.relatedTarget)) { inlineOpen = false; panelOpen = false; } }}>
 	<form
-		class="hero-search-form flex items-center px-4 md:px-6"
+		class="hero-search-form relative flex items-center px-4 md:px-6"
 		action={searchConfig.url}
 		method="GET"
 		target="_blank"
@@ -1032,6 +1043,9 @@
 		{:else}
 			<kbd class="hero-search-kbd hidden md:inline-flex items-center gap-0.5 text-[0.7rem] py-1 px-2 rounded border font-mono shrink-0">{#if macKeys}<svg class="kbd-glyph" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" role="img" aria-label="Command"><path d="M9 6a3 3 0 1 0-3 3h12a3 3 0 1 0-3-3v12a3 3 0 1 0 3-3H6a3 3 0 1 0 3 3Z"/></svg>{:else}Ctrl&nbsp;{/if}K</kbd>
 		{/if}
+		<!-- One thin line while an app is still searching, so "still looking"
+		     and "found nothing" don't look the same. -->
+		{#if isPaletteOpen && sections.some((s) => s.loading)}<span class="search-progress" aria-hidden="true"></span>{/if}
 	</form>
 
 	{#if isPaletteOpen}
