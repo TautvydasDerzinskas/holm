@@ -7,12 +7,13 @@
 	import IntegrationsPanel from '$lib/components/IntegrationsPanel.svelte';
 	import AppIcon from '$lib/components/AppIcon.svelte';
 	import { integrations as integrationsStore } from '$lib/stores/integrations.js';
-	import { TOTAL_WALLPAPERS, getWallpaperThumbUrl } from '$lib/wallpaper.js';
+	import { getWallpaperThumbUrl } from '$lib/wallpaper.js';
 	import { browser } from '$app/environment';
 	import { confirmDiscardUnsaved } from '$lib/unsaved.js';
 	import { DEFAULT_TIME_FORMAT, DEFAULT_TEMP_UNIT, TIME_FORMATS, TEMP_UNITS } from '$lib/units.js';
 	import UnitPicker from '$lib/components/UnitPicker.svelte';
 	import { SEARCH_ON_FOCUS, searchOnFocus } from '$lib/searchOnFocus.js';
+	import { SEARCH_TRANSPARENCY, SEARCH_HINTS, searchTransparency, searchHints } from '$lib/searchLook.js';
 
 	const siteConfig = getContext('config');
 	const version = siteConfig?.version || '';
@@ -37,7 +38,8 @@
 	let wallpaperPage = $state(0);
 	let enabledWidgets = $state(new Set($prefs.enabledWidgets || ['weather', 'search']));
 	const WALLPAPERS_PER_PAGE = 12;
-	const totalPages = Math.ceil(TOTAL_WALLPAPERS / WALLPAPERS_PER_PAGE);
+	const wallpaperCount = siteConfig?.wallpapers?.count || 0;
+	const totalPages = Math.max(1, Math.ceil(wallpaperCount / WALLPAPERS_PER_PAGE));
 
 	let prevOpen = false;
 
@@ -359,14 +361,14 @@
 
 						<!-- Wallpaper grid — always visible -->
 						<div class="grid grid-cols-3 max-md:grid-cols-2 gap-1.5">
-							{#each Array.from({length: WALLPAPERS_PER_PAGE}, (_, i) => wallpaperPage * WALLPAPERS_PER_PAGE + i + 1).filter(id => id <= TOTAL_WALLPAPERS) as id}
+							{#each Array.from({length: WALLPAPERS_PER_PAGE}, (_, i) => wallpaperPage * WALLPAPERS_PER_PAGE + i + 1).filter(id => id <= wallpaperCount) as id}
 								<button
 									class="relative aspect-video rounded-lg overflow-hidden cursor-pointer border-2 transition-all duration-150 bg-surface-card {wallpaperId == id ? 'border-white/60 shadow-lg' : 'border-transparent hover:border-border-pill'}"
 									onclick={() => selectWallpaper(id)}
 								>
 									<div class="absolute inset-0 shimmer"></div>
 									<img
-										src={getWallpaperThumbUrl(id)}
+										src={getWallpaperThumbUrl(id, siteConfig?.wallpapers)}
 										alt="Wallpaper {id}"
 										loading="lazy"
 										class="absolute inset-0 w-full h-full object-cover transition-opacity duration-300 opacity-0"
@@ -410,7 +412,11 @@
 					{ id: 'weather', name: 'Weather', desc: 'Conditions where you are', icon: 'M12 3v2M12 19v2M5.6 5.6 7 7M17 17l1.4 1.4M3 12h2M19 12h2M5.6 18.4 7 17M17 7l1.4-1.4M12 8a4 4 0 1 0 0 8 4 4 0 0 0 0-8z',
 						settings: [{ key: 'tempUnit', label: 'Temperature', options: TEMP_UNITS, fallback: DEFAULT_TEMP_UNIT }] },
 					{ id: 'search', name: 'Search', desc: 'Apps and files, mid-page', icon: 'M11 4a7 7 0 1 0 0 14 7 7 0 0 0 0-14zM20 20l-4-4',
-						settings: [{ key: 'searchOnFocus', label: 'On focus', options: SEARCH_ON_FOCUS, fallback: searchOnFocus(undefined, siteConfig?.search?.on_focus) }] }
+						settings: [
+							{ key: 'searchOnFocus', label: 'On focus', options: SEARCH_ON_FOCUS, fallback: searchOnFocus(undefined, siteConfig?.search?.on_focus) },
+							{ key: 'searchTransparency', label: 'Transparency', options: SEARCH_TRANSPARENCY, fallback: searchTransparency(undefined, siteConfig?.search?.transparency) },
+							{ key: 'searchHints', label: 'Hints', options: SEARCH_HINTS, fallback: searchHints(undefined, siteConfig?.search?.hints) }
+						] }
 				]}
 				{#snippet toggle(on)}
 					<div class="w-9 h-5 rounded-full transition-colors duration-200 relative shrink-0 {on ? 'bg-surface-toggle-on' : 'bg-surface-toggle-off'}">
@@ -526,6 +532,7 @@
 		padding: 0.4rem 0.75rem 0.4rem 3.5rem;
 		border-top: 1px solid var(--glass-border);
 	}
+	.widget-setting + .widget-setting { border-top: none; }
 	.widget-setting > :global(*) { flex: 1; min-width: 0; }
 	@media (max-width: 767px) {
 		.widget-setting { padding-left: 0.75rem; }

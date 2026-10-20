@@ -8,6 +8,8 @@ import { canSeeApp, canSeeSection, sectionsFor } from './appAccess.js';
 import { latestRelease, updateFor } from './updateCheck.js';
 import { substituteEnvVars } from './envVars.js';
 import { searchOnFocusError } from '../searchOnFocus.js';
+import { searchLookError } from '../searchLook.js';
+import { wallpapersError, wallpaperCount, wallpaperVersion, hasResizer } from './wallpapers.js';
 
 let _config = null;
 
@@ -43,7 +45,7 @@ function loadConfig() {
 		throw new Error(`${configPath} must be a YAML mapping of settings`);
 	}
 	const config = substituteEnvVars(parsed);
-	const invalid = searchOnFocusError(config.search);
+	const invalid = searchOnFocusError(config.search) || searchLookError(config.search) || wallpapersError(config.wallpapers);
 	if (invalid) throw new Error(`Invalid setting in ${configPath}: ${invalid}`);
 	_config = config;
 	return _config;
@@ -165,6 +167,14 @@ async function loadPrivacyHtml(privacy) {
 	}
 }
 
+// The picker needs only the switch and how many there are, never the source.
+function clientWallpapers(config) {
+	const enabled = config.wallpapers?.enabled ?? false;
+	const w = config.wallpapers || {};
+	if (!enabled) return { enabled, count: 0, resized: false };
+	return { enabled, count: wallpaperCount(w), v: wallpaperVersion(w), resized: hasResizer(w) };
+}
+
 // Returns a client-safe subset (no secrets).
 // When authenticated is false, only returns what the login page needs —
 // branding, auth settings, privacy (for T&C), and wallpaper flag.
@@ -182,7 +192,7 @@ export async function getClientConfig({ authenticated = true, user = null } = {}
 			branding: getBranding(),
 			auth,
 			privacy: { ...privacy, html: await loadPrivacyHtml(privacy) },
-			wallpapers: { enabled: config.wallpapers?.enabled ?? false }
+			wallpapers: clientWallpapers(config)
 		};
 	}
 
@@ -192,7 +202,7 @@ export async function getClientConfig({ authenticated = true, user = null } = {}
 		apps: getAppsConfig().filter((app) => canSeeApp(app, user)),
 		customization: { enabled: config.customization?.enabled ?? false },
 		search: getSearchConfig(),
-		wallpapers: { enabled: config.wallpapers?.enabled ?? false },
+		wallpapers: clientWallpapers(config),
 		weather: { enabled: config.weather?.enabled ?? false },
 		onboarding: getOnboardingConfig(user),
 		privacy: { ...privacy, html: await loadPrivacyHtml(privacy) },

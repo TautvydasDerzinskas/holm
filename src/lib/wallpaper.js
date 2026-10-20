@@ -1,17 +1,26 @@
-export const TOTAL_WALLPAPERS = 326;
+// Wallpaper URLs for the browser. Wallpapers are numbered 1 to count, the
+// number of images in the configured source; the server sends count and v
+// as config.wallpapers. v changes whenever the source or a folder's files
+// do, so a browser never shows an image it cached under the same number from
+// before. No pick, or one past the count (the source shrank), shows the
+// wallpaper of the day, which the server picks.
 
-export function getTodayWallpaperId() {
-	const now = new Date();
-	const dayOfYear = Math.floor((Date.now() - new Date(now.getFullYear(), 0, 0).getTime()) / 86400000);
-	return String(((dayOfYear % TOTAL_WALLPAPERS) + 1)).padStart(4, '0');
+const inRange = (id, count) => Number.isInteger(Number(id)) && id >= 1 && (!count || id <= count);
+
+function wallpaperPath(wallpaperId, { count, v } = {}, suffix = '') {
+	const path = inRange(wallpaperId, count) ? `/api/wallpaper/${String(wallpaperId).padStart(4, '0')}${suffix}` : `/api/wallpaper/today${suffix}`;
+	return v ? `${path}?v=${v}` : path;
 }
 
-export function getWallpaperUrl(wallpaperId) {
-	const id = wallpaperId || getTodayWallpaperId();
-	return `/api/wallpaper/${String(id).padStart(4, '0')}`;
+export function getWallpaperUrl(wallpaperId, wallpapers) {
+	return wallpaperPath(wallpaperId, wallpapers);
 }
 
-export function getWallpaperThumbUrl(wallpaperId) {
-	const id = wallpaperId || getTodayWallpaperId();
-	return `/api/wallpaper/${String(id).padStart(4, '0')}/thumb`;
+export function getWallpaperThumbUrl(wallpaperId, wallpapers) {
+	return wallpaperPath(wallpaperId, wallpapers, '/thumb');
+}
+
+// The original, skipping the resizer, for screens wider than the 1920px image.
+export function getWallpaperOriginalUrl(wallpaperId, wallpapers) {
+	return wallpaperPath(wallpaperId, wallpapers, '/original');
 }
